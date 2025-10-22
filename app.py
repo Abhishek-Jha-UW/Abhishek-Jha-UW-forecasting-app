@@ -28,9 +28,7 @@ sample_csv = """Date,Sales
 2023-01-29,140
 2023-02-05,150
 """
-
 sample_bytes = io.BytesIO(sample_csv.encode("utf-8"))
-
 st.download_button(
     label="Download sample data",
     data=sample_bytes,
