@@ -19,7 +19,6 @@ Supported formats: `.csv`, `.xlsx`
 - Column B: Numeric values (e.g., sales, revenue)
 """)
 
-# 🔹 Embedded sample data
 sample_csv = """Date,Sales
 2023-01-01,100
 2023-01-08,120
@@ -29,12 +28,7 @@ sample_csv = """Date,Sales
 2023-02-05,150
 """
 sample_bytes = io.BytesIO(sample_csv.encode("utf-8"))
-st.download_button(
-    label="Download sample data",
-    data=sample_bytes,
-    file_name="sample_data.csv",
-    mime="text/csv"
-)
+st.download_button("Download sample data", sample_bytes, "sample_data.csv", "text/csv")
 
 uploaded_file = st.file_uploader("Upload your file", type=["csv", "xlsx"])
 forecast_horizon = st.slider("Number of weeks to forecast", 4, 24, 6)
@@ -56,7 +50,6 @@ if uploaded_file:
 
         target_column = st.selectbox("Select column to forecast", df.select_dtypes(include='number').columns)
 
-        forecast = None
         if model_choice == "Simple MA":
             model = SimpleMA(df, target_column)
             result = model.apply()
@@ -91,3 +84,12 @@ if uploaded_file:
             forecast_df = pd.DataFrame({"Date": forecast.index, "Forecast": forecast.values})
             st.dataframe(forecast_df.style.format({"Forecast": "{:.2f}"}))
 
+            true = df[target_column][-forecast_horizon:]
+            pred = forecast[:forecast_horizon]
+            rmse, mae, mape = evaluate_forecast(true.values, pred.values)
+            st.metric("RMSE", f"{rmse:.2f}")
+            st.metric("MAE", f"{mae:.2f}")
+            st.metric("MAPE", f"{mape:.2f}%")
+
+    except Exception as e:
+        st.error(f"Error processing file or forecast: {e}")
