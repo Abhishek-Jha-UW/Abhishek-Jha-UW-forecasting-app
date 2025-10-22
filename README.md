@@ -21,6 +21,11 @@ Your file should have:
 - Column A: `Date` (e.g., 2023-01-01)
 - Column B: Numeric values (e.g., sales, revenue)
 
+## 📊 Sample Data
+
+Click the “Download sample data” button in the app to get a ready-to-use CSV.  
+It includes weekly sales data with a `Date` column and numeric values.
+
 ## 🚀 Deployment
 
 This app is ready for Streamlit Cloud. Just upload the repo and go live.
@@ -28,10 +33,6 @@ This app is ready for Streamlit Cloud. Just upload the repo and go live.
 ## 📦 Requirements
 
 See `requirements.txt` for all dependencies.
-
-## 📊 Sample Data
-
-Download the included `sample_data.csv` to test the app instantly.
 
 ## 🧠 Next Steps
 
