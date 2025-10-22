@@ -3,4 +3,6 @@ pandas
 numpy
 statsmodels
 scikit-learn
+xgboost
 openpyxl
+plotly
