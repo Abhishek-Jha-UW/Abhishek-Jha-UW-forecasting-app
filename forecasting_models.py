@@ -6,7 +6,6 @@ from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 
-# 📊 Simple Moving Average
 class SimpleMA:
     def __init__(self, df, target_column, window=4):
         self.df = df.copy()
@@ -17,7 +16,6 @@ class SimpleMA:
         self.df['SMA'] = self.df[self.target_column].rolling(window=self.window).mean()
         return self.df
 
-# 🔮 ARIMA Forecaster
 class ARIMAForecaster:
     def __init__(self, df, target_column, order=(1,1,1), steps=6):
         self.series = df[target_column]
@@ -31,7 +29,6 @@ class ARIMAForecaster:
         forecast.index = pd.date_range(start=self.series.index[-1], periods=self.steps+1, freq='W')[1:]
         return forecast
 
-# 🌦️ SARIMA Forecaster
 class SARIMAForecaster:
     def __init__(self, df, target_column, order=(1,1,1), seasonal_order=(1,1,1,12), steps=6):
         self.series = df[target_column]
@@ -46,7 +43,6 @@ class SARIMAForecaster:
         forecast.index = pd.date_range(start=self.series.index[-1], periods=self.steps+1, freq='W')[1:]
         return forecast
 
-# 📉 ETS Forecaster
 class ETSForecaster:
     def __init__(self, df, target_column, steps=6):
         self.series = df[target_column]
@@ -59,7 +55,6 @@ class ETSForecaster:
         forecast.index = pd.date_range(start=self.series.index[-1], periods=self.steps+1, freq='W')[1:]
         return forecast
 
-# ⚙️ XGBoost Forecaster
 class XGBoostForecaster:
     def __init__(self, df, target_column, lags=6, steps=6):
         self.df = df.copy()
@@ -88,7 +83,6 @@ class XGBoostForecaster:
         forecast_index = pd.date_range(start=self.df.index[-1], periods=self.steps+1, freq='W')[1:]
         return pd.Series(preds, index=forecast_index)
 
-# 📏 Evaluation Metrics (Safe across environments)
 def evaluate_forecast(true, pred):
     true = np.array(true)
     pred = np.array(pred)
