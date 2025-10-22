@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import io
 from forecasting_models import (
     SimpleMA, ARIMAForecaster, SARIMAForecaster,
     ETSForecaster, XGBoostForecaster, evaluate_forecast
@@ -12,17 +13,31 @@ st.title("📈 Forecasting Tool")
 st.markdown("""
 Upload a time series file with a `Date` column and one numeric column.  
 Supported formats: `.csv`, `.xlsx`  
-**Note:** Your file should have:
+
+**Required format:**
 - Column A: `Date` (e.g., 2023-01-01)
 - Column B: Numeric values (e.g., sales, revenue)
 """)
 
+# 🔹 Embedded sample data
+sample_csv = """Date,Sales
+2023-01-01,100
+2023-01-08,120
+2023-01-15,130
+2023-01-22,125
+2023-01-29,140
+2023-02-05,150
+"""
+st.download_button(
+    label="Download sample data",
+    data=io.StringIO(sample_csv),
+    file_name="sample_data.csv",
+    mime="text/csv"
+)
+
 uploaded_file = st.file_uploader("Upload your file", type=["csv", "xlsx"])
 forecast_horizon = st.slider("Number of weeks to forecast", 4, 24, 6)
 model_choice = st.selectbox("Choose forecasting model", ["Simple MA", "ARIMA", "SARIMA", "ETS", "XGBoost"])
-
-with open("sample_data.csv", "rb") as file:
-    st.download_button("Download sample data", file, file_name="sample_data.csv", mime="text/csv")
 
 if uploaded_file:
     try:
