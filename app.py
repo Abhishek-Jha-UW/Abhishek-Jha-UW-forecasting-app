@@ -51,45 +51,34 @@ if uploaded_file:
         target_column = st.selectbox("Select column to forecast", df.select_dtypes(include='number').columns)
 
         if model_choice == "Simple MA":
-            model = SimpleMA(df, target_column)
-            result = model.apply()
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=result.index, y=result[target_column], name="Actual", line=dict(color="blue")))
-            fig.add_trace(go.Scatter(x=result.index, y=result['SMA'], name="SMA", line=dict(color="orange", dash="dash")))
-            st.plotly_chart(fig, use_container_width=True)
+            model = SimpleMA(df, target_column, steps=forecast_horizon)
+        elif model_choice == "ARIMA":
+            model = ARIMAForecaster(df, target_column, steps=forecast_horizon)
+        elif model_choice == "SARIMA":
+            model = SARIMAForecaster(df, target_column, steps=forecast_horizon)
+        elif model_choice == "ETS":
+            model = ETSForecaster(df, target_column, steps=forecast_horizon)
+        elif model_choice == "XGBoost":
+            model = XGBoostForecaster(df, target_column, steps=forecast_horizon)
 
-        else:
-            if model_choice == "ARIMA":
-                model = ARIMAForecaster(df, target_column, steps=forecast_horizon)
-            elif model_choice == "SARIMA":
-                model = SARIMAForecaster(df, target_column, steps=forecast_horizon)
-            elif model_choice == "ETS":
-                model = ETSForecaster(df, target_column, steps=forecast_horizon)
-            elif model_choice == "XGBoost":
-                model = XGBoostForecaster(df, target_column, steps=forecast_horizon)
+        forecast = model.forecast()
 
-            forecast = model.forecast()
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=df.index, y=df[target_column], name="Actual", line=dict(color="blue")))
+        fig.add_trace(go.Scatter(x=forecast.index, y=forecast.values, name="Forecast", line=dict(color="orange", dash="dash"), mode="lines+markers"))
 
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=df.index, y=df[target_column], name="Actual", line=dict(color="blue")))
-            fig.add_trace(go.Scatter(x=forecast.index, y=forecast.values, name="Forecast", line=dict(color="orange", dash="dash"), mode="lines+markers"))
+        for date, value in zip(forecast.index, forecast.values):
+            fig.add_annotation(x=date, y=value, text=f"{value:.1f}", showarrow=True, arrowhead=1, ax=0, ay=-20)
 
-            for date, value in zip(forecast.index, forecast.values):
-                fig.add_annotation(x=date, y=value, text=f"{value:.1f}", showarrow=True, arrowhead=1, ax=0, ay=-20)
+        fig.add_vline(x=forecast.index[0], line=dict(color="gray", dash="dot"), annotation_text="Forecast Start", annotation_position="top left")
+        st.plotly_chart(fig, use_container_width=True)
 
-            fig.add_vline(x=forecast.index[0], line=dict(color="gray", dash="dot"), annotation_text="Forecast Start", annotation_position="top left")
-            st.plotly_chart(fig, use_container_width=True)
+        st.subheader("📅 Forecasted Values")
+        forecast_df = pd.DataFrame({"Date": forecast.index, "Forecast": forecast.values})
+        st.dataframe(forecast_df.style.format({"Forecast": "{:.2f}"}))
 
-            st.subheader("📅 Forecasted Values")
-            forecast_df = pd.DataFrame({"Date": forecast.index, "Forecast": forecast.values})
-            st.dataframe(forecast_df.style.format({"Forecast": "{:.2f}"}))
-
+        if len(df) >= forecast_horizon:
             true = df[target_column][-forecast_horizon:]
             pred = forecast[:forecast_horizon]
             rmse, mae, mape = evaluate_forecast(true.values, pred.values)
-            st.metric("RMSE", f"{rmse:.2f}")
-            st.metric("MAE", f"{mae:.2f}")
-            st.metric("MAPE", f"{mape:.2f}%")
-
-    except Exception as e:
-        st.error(f"Error processing file or forecast: {e}")
+            st.metric("RM
