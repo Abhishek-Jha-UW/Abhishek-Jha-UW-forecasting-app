@@ -8,17 +8,31 @@ from xgboost import XGBRegressor
 import warnings
 warnings.filterwarnings("ignore")
 
-# Utility — ensure DatetimeIndex
+# --- Utility Functions ---
+
 def ensure_datetime_index(df):
+    """Ensure dataframe index is DatetimeIndex and sorted."""
     df = df.copy()
     df.index = pd.to_datetime(df.index, errors="coerce")
-    df = df.dropna(subset=[df.columns[0]])  # Drop rows where target is NA
+    df = df.dropna(subset=[df.columns[0]])  # drop rows with NA in target
     if not isinstance(df.index, pd.DatetimeIndex):
         raise ValueError("The DataFrame index must be a DatetimeIndex.")
     df = df.sort_index()
     return df
 
-# Simple Moving Average
+def safe_infer_freq(index):
+    """Try to infer frequency safely, fallback to 'W' or 'D'."""
+    freq = pd.infer_freq(index)
+    if freq is None:
+        # Try to guess based on median delta
+        deltas = np.diff(index.values).astype("timedelta64[D]").astype(int)
+        median_gap = np.median(deltas) if len(deltas) > 0 else 7
+        freq = "D" if median_gap <= 1 else "W"
+    return freq
+
+
+# --- Forecasting Models ---
+
 class SimpleMA:
     def __init__(self, df, target_col, steps=6, window=3):
         self.df = ensure_datetime_index(df)
@@ -29,13 +43,14 @@ class SimpleMA:
     def forecast(self):
         y = self.df[self.target].dropna()
         last_date = y.index[-1]
-        freq = pd.infer_freq(y.index) or "W"
-        future_idx = pd.date_range(last_date, periods=self.steps + 1, freq=freq)[1:]
+        freq = safe_infer_freq(y.index)
+        future_idx = pd.date_range(start=last_date + pd.tseries.frequencies.to_offset(freq),
+                                   periods=self.steps, freq=freq)
         forecast_value = y.rolling(self.window).mean().iloc[-1]
         forecast = pd.Series([forecast_value] * self.steps, index=future_idx)
         return forecast
 
-# ARIMA Model
+
 class ARIMAForecaster:
     def __init__(self, df, target_col, steps=6):
         self.df = ensure_datetime_index(df)
@@ -46,12 +61,13 @@ class ARIMAForecaster:
         y = self.df[self.target]
         model = ARIMA(y, order=(1, 1, 1))
         fit = model.fit()
+        freq = safe_infer_freq(y.index)
         forecast = fit.forecast(steps=self.steps)
-        freq = pd.infer_freq(y.index) or "W"
-        forecast.index = pd.date_range(y.index[-1], periods=self.steps + 1, freq=freq)[1:]
+        forecast.index = pd.date_range(start=y.index[-1] + pd.tseries.frequencies.to_offset(freq),
+                                       periods=self.steps, freq=freq)
         return forecast
 
-# SARIMA Model
+
 class SARIMAForecaster:
     def __init__(self, df, target_col, steps=6):
         self.df = ensure_datetime_index(df)
@@ -62,12 +78,13 @@ class SARIMAForecaster:
         y = self.df[self.target]
         model = SARIMAX(y, order=(1, 1, 1), seasonal_order=(1, 1, 1, 12))
         fit = model.fit(disp=False)
+        freq = safe_infer_freq(y.index)
         forecast = fit.forecast(steps=self.steps)
-        freq = pd.infer_freq(y.index) or "W"
-        forecast.index = pd.date_range(y.index[-1], periods=self.steps + 1, freq=freq)[1:]
+        forecast.index = pd.date_range(start=y.index[-1] + pd.tseries.frequencies.to_offset(freq),
+                                       periods=self.steps, freq=freq)
         return forecast
 
-# ETS Model
+
 class ETSForecaster:
     def __init__(self, df, target_col, steps=6):
         self.df = ensure_datetime_index(df)
@@ -78,12 +95,13 @@ class ETSForecaster:
         y = self.df[self.target]
         model = ExponentialSmoothing(y, trend="add", seasonal="add", seasonal_periods=12)
         fit = model.fit()
+        freq = safe_infer_freq(y.index)
         forecast = fit.forecast(self.steps)
-        freq = pd.infer_freq(y.index) or "W"
-        forecast.index = pd.date_range(y.index[-1], periods=self.steps + 1, freq=freq)[1:]
+        forecast.index = pd.date_range(start=y.index[-1] + pd.tseries.frequencies.to_offset(freq),
+                                       periods=self.steps, freq=freq)
         return forecast
 
-# XGBoost Model
+
 class XGBoostForecaster:
     def __init__(self, df, target_col, steps=6):
         self.df = ensure_datetime_index(df)
@@ -100,13 +118,14 @@ class XGBoostForecaster:
 
         future_time = np.arange(len(df), len(df) + self.steps).reshape(-1, 1)
         pred = model.predict(future_time)
-
-        freq = pd.infer_freq(y.index) or "W"
-        forecast_idx = pd.date_range(y.index[-1], periods=self.steps + 1, freq=freq)[1:]
+        freq = safe_infer_freq(y.index)
+        forecast_idx = pd.date_range(start=y.index[-1] + pd.tseries.frequencies.to_offset(freq),
+                                     periods=self.steps, freq=freq)
         forecast = pd.Series(pred, index=forecast_idx)
         return forecast
 
-# Evaluation metrics
+
+# --- Evaluation ---
 def evaluate_forecast(true, pred):
     true, pred = np.array(true), np.array(pred)
     rmse = np.sqrt(mean_squared_error(true, pred))
