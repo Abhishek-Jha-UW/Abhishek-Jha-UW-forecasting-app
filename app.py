@@ -1,120 +1,105 @@
-import numpy as np
+import streamlit as st
 import pandas as pd
-from statsmodels.tsa.arima.model import ARIMA
-from statsmodels.tsa.statespace.sarimax import SARIMAX
-from statsmodels.tsa.holtwinters import ExponentialSmoothing
-from sklearn.metrics import mean_absolute_error, mean_squared_error
-from xgboost import XGBRegressor
-import warnings
-warnings.filterwarnings("ignore")
+import plotly.graph_objects as go
+import io
+from forecasting_models import (
+    SimpleMA, ARIMAForecaster, SARIMAForecaster,
+    ETSForecaster, XGBoostForecaster, evaluate_forecast
+)
 
-def ensure_datetime_index(df, target_col):
-    df = df.copy()
-    df.index = pd.to_datetime(df.index, errors="coerce")
-    df = df.dropna(subset=[target_col])
-    df = df.sort_index()
-    df.index = df.index.tz_localize(None) if df.index.tz is not None else df.index
-    if not isinstance(df.index, pd.DatetimeIndex):
-        raise ValueError("Index must be a DatetimeIndex.")
-    return df
+st.set_page_config(page_title="Forecasting Tool", layout="wide")
+st.title("📈 Time Series Forecasting Tool")
 
-def safe_infer_freq(index):
-    freq = pd.infer_freq(index)
-    if freq is None:
-        deltas = np.diff(index.values).astype("timedelta64[D]").astype(int)
-        median_gap = np.median(deltas) if len(deltas) > 0 else 7
-        freq = "D" if median_gap <= 1 else "W"
-    return freq
+st.markdown("""
+Upload a time series file with a `Date` column and one numeric column.  
+Supported formats: `.csv`, `.xlsx`  
+""")
 
-class SimpleMA:
-    def __init__(self, df, target_col, steps=6, window=3):
-        self.df = ensure_datetime_index(df, target_col)
-        self.target = target_col
-        self.steps = steps
-        self.window = window
+# Sample data
+sample_csv = """Date,Sales
+2023-01-01,100
+2023-01-08,120
+2023-01-15,130
+2023-01-22,125
+2023-01-29,140
+2023-02-05,150
+"""
+sample_bytes = io.BytesIO(sample_csv.encode("utf-8"))
+st.download_button("Download sample data", sample_bytes, "sample_data.csv", "text/csv")
 
-    def forecast(self):
-        y = self.df[self.target].dropna()
-        freq = safe_infer_freq(y.index)
-        offset = pd.tseries.frequencies.to_offset(freq)
-        forecast_index = [y.index[-1] + (i + 1) * offset for i in range(self.steps)]
-        forecast_value = y.rolling(self.window).mean().iloc[-1]
-        return pd.Series([forecast_value] * self.steps, index=pd.to_datetime(forecast_index))
+uploaded_file = st.file_uploader("Upload your file", type=["csv", "xlsx"])
+forecast_horizon = st.slider("Number of periods to forecast", 4, 24, 6)
+model_choice = st.selectbox("Choose forecasting model", ["Simple MA", "ARIMA", "SARIMA", "ETS", "XGBoost"])
 
-class ARIMAForecaster:
-    def __init__(self, df, target_col, steps=6):
-        self.df = ensure_datetime_index(df, target_col)
-        self.target = target_col
-        self.steps = steps
+if uploaded_file:
+    try:
+        # Load and clean data
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file)
 
-    def forecast(self):
-        y = self.df[self.target]
-        model = ARIMA(y, order=(1, 1, 1))
-        fit = model.fit()
-        freq = safe_infer_freq(y.index)
-        offset = pd.tseries.frequencies.to_offset(freq)
-        forecast = fit.forecast(steps=self.steps)
-        forecast_index = [y.index[-1] + (i + 1) * offset for i in range(self.steps)]
-        forecast.index = pd.to_datetime(forecast_index)
-        return forecast
+        if "Date" not in df.columns:
+            st.error("Missing 'Date' column.")
+            st.stop()
 
-class SARIMAForecaster:
-    def __init__(self, df, target_col, steps=6):
-        self.df = ensure_datetime_index(df, target_col)
-        self.target = target_col
-        self.steps = steps
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+        df = df.dropna(subset=["Date"]).set_index("Date")
+        df = df.sort_index()
+        df.index = df.index.tz_localize(None) if df.index.tz is not None else df.index
 
-    def forecast(self):
-        y = self.df[self.target]
-        model = SARIMAX(y, order=(1, 1, 1), seasonal_order=(1, 1, 1, 12))
-        fit = model.fit(disp=False)
-        freq = safe_infer_freq(y.index)
-        offset = pd.tseries.frequencies.to_offset(freq)
-        forecast = fit.forecast(steps=self.steps)
-        forecast_index = [y.index[-1] + (i + 1) * offset for i in range(self.steps)]
-        forecast.index = pd.to_datetime(forecast_index)
-        return forecast
+        numeric_cols = df.select_dtypes(include="number").columns
+        if len(numeric_cols) == 0:
+            st.error("No numeric column found for forecasting.")
+            st.stop()
 
-class ETSForecaster:
-    def __init__(self, df, target_col, steps=6):
-        self.df = ensure_datetime_index(df, target_col)
-        self.target = target_col
-        self.steps = steps
+        st.write("### Preview of Uploaded Data")
+        st.dataframe(df.head())
 
-    def forecast(self):
-        y = self.df[self.target]
-        freq = safe_infer_freq(y.index)
-        offset = pd.tseries.frequencies.to_offset(freq)
-        model = ExponentialSmoothing(y, trend="add", seasonal="add", seasonal_periods=12)
-        fit = model.fit()
-        forecast = fit.forecast(self.steps)
-        forecast_index = [y.index[-1] + (i + 1) * offset for i in range(self.steps)]
-        forecast.index = pd.to_datetime(forecast_index)
-        return forecast
+        target_column = st.selectbox("Select column to forecast", numeric_cols)
 
-class XGBoostForecaster:
-    def __init__(self, df, target_col, steps=6):
-        self.df = ensure_datetime_index(df, target_col)
-        self.target = target_col
-        self.steps = steps
+        # Initialize model
+        model_map = {
+            "Simple MA": SimpleMA,
+            "ARIMA": ARIMAForecaster,
+            "SARIMA": SARIMAForecaster,
+            "ETS": ETSForecaster,
+            "XGBoost": XGBoostForecaster,
+        }
+        model = model_map[model_choice](df, target_column, steps=forecast_horizon)
+        forecast = model.forecast()
 
-    def forecast(self):
-        y = self.df[self.target]
-        df = y.reset_index()
-        df["time"] = np.arange(len(df))
-        X, y_train = df[["time"]], df[self.target]
-        model = XGBRegressor(n_estimators=100, learning_rate=0.1, random_state=42)
-        model.fit(X, y_train)
-        future_time = np.arange(len(df), len(df) + self.steps).reshape(-1, 1)
-        pred = model.predict(future_time)
-        freq = safe_infer_freq(self.df.index)
-        offset = pd.tseries.frequencies.to_offset(freq)
-        forecast_index = [self.df.index[-1] + (i + 1) * offset for i in range(self.steps)]
-        return pd.Series(pred, index=pd.to_datetime(forecast_index))
+        # Plot forecast
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=df.index, y=df[target_column], name="Actual", line=dict(color="blue")))
+        fig.add_trace(go.Scatter(x=forecast.index, y=forecast.values, name="Forecast",
+                                 line=dict(color="orange", dash="dash"), mode="lines+markers"))
 
-def evaluate_forecast(true, pred):
-    true, pred = np.array(true), np.array(pred)
-    rmse = np.sqrt(mean_squared_error(true, pred))
-    mae = mean_absolute_error(true, pred)
-    mape = np.mean(np.abs((true - pred) / np.maximum(true, 1e-8))) * 100
-    return rmse, mae, mape
+        fig.add_vline(x=forecast.index[0], line=dict(color="gray", dash="dot"),
+                      annotation_text="Forecast Start", annotation_position="top left")
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Forecast table
+        st.subheader("📅 Forecasted Values")
+        forecast_df = pd.DataFrame({"Date": forecast.index, "Forecast": forecast.values})
+        st.dataframe(forecast_df.style.format({"Forecast": "{:.2f}"}))
+
+        # Optional download
+        csv = forecast_df.to_csv(index=False).encode("utf-8")
+        st.download_button("Download forecast as CSV", csv, "forecast.csv", "text/csv")
+
+        # Evaluation (patched with index reset)
+        if len(df) >= forecast_horizon:
+            true = df[target_column].iloc[-forecast_horizon:]
+            pred = forecast.reset_index(drop=True).iloc[:forecast_horizon]
+            rmse, mae, mape = evaluate_forecast(true.values, pred.values)
+            c1, c2, c3 = st.columns(3)
+            c1.metric("RMSE", f"{rmse:.2f}")
+            c2.metric("MAE", f"{mae:.2f}")
+            c3.metric("MAPE", f"{mape:.2f}%")
+        else:
+            st.warning("Not enough historical data to evaluate forecast accuracy.")
+
+    except Exception as e:
+        st.error(f"Error processing file or forecast: {e}")
