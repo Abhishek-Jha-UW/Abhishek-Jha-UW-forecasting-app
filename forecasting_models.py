@@ -8,29 +8,23 @@ from xgboost import XGBRegressor
 import warnings
 warnings.filterwarnings("ignore")
 
-# --- Utility Functions ---
-
 def ensure_datetime_index(df, target_col):
-    """Ensure dataframe index is DatetimeIndex and sorted."""
     df = df.copy()
     df.index = pd.to_datetime(df.index, errors="coerce")
     df = df.dropna(subset=[target_col])
     df = df.sort_index()
     df.index = df.index.tz_localize(None) if df.index.tz is not None else df.index
     if not isinstance(df.index, pd.DatetimeIndex):
-        raise ValueError("The DataFrame index must be a DatetimeIndex.")
+        raise ValueError("Index must be a DatetimeIndex.")
     return df
 
 def safe_infer_freq(index):
-    """Try to infer frequency safely, fallback to 'W' or 'D'."""
     freq = pd.infer_freq(index)
     if freq is None:
         deltas = np.diff(index.values).astype("timedelta64[D]").astype(int)
         median_gap = np.median(deltas) if len(deltas) > 0 else 7
         freq = "D" if median_gap <= 1 else "W"
     return freq
-
-# --- Forecasting Models ---
 
 class SimpleMA:
     def __init__(self, df, target_col, steps=6, window=3):
@@ -117,8 +111,6 @@ class XGBoostForecaster:
         offset = pd.tseries.frequencies.to_offset(freq)
         forecast_index = [self.df.index[-1] + (i + 1) * offset for i in range(self.steps)]
         return pd.Series(pred, index=pd.to_datetime(forecast_index))
-
-# --- Evaluation ---
 
 def evaluate_forecast(true, pred):
     true, pred = np.array(true), np.array(pred)
