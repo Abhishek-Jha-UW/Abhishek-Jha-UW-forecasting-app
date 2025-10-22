@@ -1,5 +1,5 @@
-import numpy as np
 import pandas as pd
+import numpy as np
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
@@ -8,110 +8,83 @@ from xgboost import XGBRegressor
 import warnings
 warnings.filterwarnings("ignore")
 
-def ensure_datetime_index(df, target_col):
-    df = df.copy()
-    df.index = pd.to_datetime(df.index, errors="coerce")
-    df = df.dropna(subset=[target_col])
-    df = df.sort_index()
-    df.index = df.index.tz_localize(None) if df.index.tz is not None else df.index
-    if not isinstance(df.index, pd.DatetimeIndex):
-        raise ValueError("Index must be a DatetimeIndex.")
-    return df
-
-def safe_infer_freq(index):
-    freq = pd.infer_freq(index)
-    if freq is None:
-        deltas = np.diff(index.values).astype("timedelta64[D]").astype(int)
-        median_gap = np.median(deltas) if len(deltas) > 0 else 7
-        freq = "D" if median_gap <= 1 else "W"
-    return freq
-
+# --- Simple Moving Average ---
 class SimpleMA:
     def __init__(self, df, target_col, steps=6, window=3):
-        self.df = ensure_datetime_index(df, target_col)
+        self.df = df.copy()
         self.target = target_col
         self.steps = steps
         self.window = window
 
     def forecast(self):
         y = self.df[self.target].dropna()
-        freq = safe_infer_freq(y.index)
-        offset = pd.tseries.frequencies.to_offset(freq)
-        forecast_index = [y.index[-1] + (i + 1) * offset for i in range(self.steps)]
-        forecast_value = y.rolling(self.window).mean().iloc[-1]
-        return pd.Series([forecast_value] * self.steps, index=pd.to_datetime(forecast_index))
+        last_sma = y.rolling(window=self.window).mean().iloc[-1]
+        forecast_values = [last_sma] * self.steps
+        return pd.Series(forecast_values)  # No datetime index
 
+# --- ARIMA ---
 class ARIMAForecaster:
     def __init__(self, df, target_col, steps=6):
-        self.df = ensure_datetime_index(df, target_col)
+        self.df = df.copy()
         self.target = target_col
         self.steps = steps
 
     def forecast(self):
-        y = self.df[self.target]
+        y = self.df[self.target].dropna()
         model = ARIMA(y, order=(1, 1, 1))
         fit = model.fit()
-        freq = safe_infer_freq(y.index)
-        offset = pd.tseries.frequencies.to_offset(freq)
         forecast = fit.forecast(steps=self.steps)
-        forecast_index = [y.index[-1] + (i + 1) * offset for i in range(self.steps)]
-        forecast.index = pd.to_datetime(forecast_index)
-        return forecast
+        return forecast  # Uses default index from statsmodels
 
+# --- SARIMA ---
 class SARIMAForecaster:
     def __init__(self, df, target_col, steps=6):
-        self.df = ensure_datetime_index(df, target_col)
+        self.df = df.copy()
         self.target = target_col
         self.steps = steps
 
     def forecast(self):
-        y = self.df[self.target]
+        y = self.df[self.target].dropna()
         model = SARIMAX(y, order=(1, 1, 1), seasonal_order=(1, 1, 1, 12))
         fit = model.fit(disp=False)
-        freq = safe_infer_freq(y.index)
-        offset = pd.tseries.frequencies.to_offset(freq)
         forecast = fit.forecast(steps=self.steps)
-        forecast_index = [y.index[-1] + (i + 1) * offset for i in range(self.steps)]
-        forecast.index = pd.to_datetime(forecast_index)
-        return forecast
+        return forecast  # No datetime index assigned
 
+# --- ETS ---
 class ETSForecaster:
     def __init__(self, df, target_col, steps=6):
-        self.df = ensure_datetime_index(df, target_col)
+        self.df = df.copy()
         self.target = target_col
         self.steps = steps
 
     def forecast(self):
-        y = self.df[self.target]
-        freq = safe_infer_freq(y.index)
-        offset = pd.tseries.frequencies.to_offset(freq)
+        y = self.df[self.target].dropna()
         model = ExponentialSmoothing(y, trend="add", seasonal="add", seasonal_periods=12)
         fit = model.fit()
         forecast = fit.forecast(self.steps)
-        forecast_index = [y.index[-1] + (i + 1) * offset for i in range(self.steps)]
-        forecast.index = pd.to_datetime(forecast_index)
-        return forecast
+        return forecast  # No datetime index assigned
 
+# --- XGBoost ---
 class XGBoostForecaster:
     def __init__(self, df, target_col, steps=6):
-        self.df = ensure_datetime_index(df, target_col)
+        self.df = df.copy()
         self.target = target_col
         self.steps = steps
 
     def forecast(self):
-        y = self.df[self.target]
-        df = y.reset_index()
+        y = self.df[self.target].dropna()
+        df = y.reset_index(drop=True)
+        df = df.to_frame()
         df["time"] = np.arange(len(df))
-        X, y_train = df[["time"]], df[self.target]
+        X = df[["time"]]
+        y_train = df[self.target]
         model = XGBRegressor(n_estimators=100, learning_rate=0.1, random_state=42)
         model.fit(X, y_train)
         future_time = np.arange(len(df), len(df) + self.steps).reshape(-1, 1)
         pred = model.predict(future_time)
-        freq = safe_infer_freq(self.df.index)
-        offset = pd.tseries.frequencies.to_offset(freq)
-        forecast_index = [self.df.index[-1] + (i + 1) * offset for i in range(self.steps)]
-        return pd.Series(pred, index=pd.to_datetime(forecast_index))
+        return pd.Series(pred)  # No datetime index
 
+# --- Evaluation ---
 def evaluate_forecast(true, pred):
     true, pred = np.array(true), np.array(pred)
     rmse = np.sqrt(mean_squared_error(true, pred))
