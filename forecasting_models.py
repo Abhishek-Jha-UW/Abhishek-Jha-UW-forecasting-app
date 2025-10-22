@@ -3,7 +3,7 @@ import numpy as np
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
-from prophet import Prophet
+from fbprophet import Prophet
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 
