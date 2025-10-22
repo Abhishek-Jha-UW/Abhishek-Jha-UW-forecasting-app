@@ -33,7 +33,7 @@ model_choice = st.selectbox("Choose forecasting model", ["Simple MA", "ARIMA", "
 
 if uploaded_file:
     try:
-        # Load and clean data
+        # Load data
         if uploaded_file.name.endswith(".csv"):
             df = pd.read_csv(uploaded_file)
         else:
@@ -46,7 +46,6 @@ if uploaded_file:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
         df = df.dropna(subset=["Date"]).set_index("Date")
         df = df.sort_index()
-        df.index = df.index.tz_localize(None) if df.index.tz is not None else df.index
 
         numeric_cols = df.select_dtypes(include="number").columns
         if len(numeric_cols) == 0:
@@ -69,30 +68,27 @@ if uploaded_file:
         model = model_map[model_choice](df, target_column, steps=forecast_horizon)
         forecast = model.forecast()
 
-        # Plot forecast
+        # Plot forecast (using default index)
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df.index, y=df[target_column], name="Actual", line=dict(color="blue")))
-        fig.add_trace(go.Scatter(x=forecast.index, y=forecast.values, name="Forecast",
-                                 line=dict(color="orange", dash="dash"), mode="lines+markers"))
-
-        fig.add_vline(x=forecast.index[0], line=dict(color="gray", dash="dot"),
-                      annotation_text="Forecast Start", annotation_position="top left")
+        fig.add_trace(go.Scatter(x=list(range(len(df))), y=df[target_column].values, name="Actual", line=dict(color="blue")))
+        fig.add_trace(go.Scatter(x=list(range(len(df), len(df) + forecast_horizon)), y=forecast.values,
+                                 name="Forecast", line=dict(color="orange", dash="dash"), mode="lines+markers"))
 
         st.plotly_chart(fig, use_container_width=True)
 
         # Forecast table
         st.subheader("📅 Forecasted Values")
-        forecast_df = pd.DataFrame({"Date": forecast.index, "Forecast": forecast.values})
+        forecast_df = pd.DataFrame({"Step": list(range(1, forecast_horizon + 1)), "Forecast": forecast.values})
         st.dataframe(forecast_df.style.format({"Forecast": "{:.2f}"}))
 
         # Optional download
         csv = forecast_df.to_csv(index=False).encode("utf-8")
         st.download_button("Download forecast as CSV", csv, "forecast.csv", "text/csv")
 
-        # Evaluation (patched with index reset)
+        # Evaluation
         if len(df) >= forecast_horizon:
             true = df[target_column].iloc[-forecast_horizon:]
-            pred = forecast.reset_index(drop=True).iloc[:forecast_horizon]
+            pred = forecast.iloc[:forecast_horizon]
             rmse, mae, mape = evaluate_forecast(true.values, pred.values)
             c1, c2, c3 = st.columns(3)
             c1.metric("RMSE", f"{rmse:.2f}")
