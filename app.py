@@ -50,9 +50,8 @@ if uploaded_file:
 
         df.set_index('Date', inplace=True)
 
-        # 🔧 Remove timezone if present
-        if df.index.tz is not None:
-            df.index = df.index.tz_convert(None)
+        # 🔧 Force timezone removal
+        df.index = df.index.tz_localize(None) if df.index.tz is not None else df.index
 
         st.write("Preview of uploaded data:")
         st.dataframe(df.head())
