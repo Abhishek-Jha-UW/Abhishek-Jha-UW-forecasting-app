@@ -6,16 +6,22 @@ from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 
+# 📊 Simple Moving Average Forecaster
 class SimpleMA:
-    def __init__(self, df, target_column, window=4):
+    def __init__(self, df, target_column, window=4, steps=6):
         self.df = df.copy()
         self.target_column = target_column
         self.window = window
+        self.steps = steps
 
-    def apply(self):
-        self.df['SMA'] = self.df[self.target_column].rolling(window=self.window).mean()
-        return self.df
+    def forecast(self):
+        sma_series = self.df[self.target_column].rolling(window=self.window).mean()
+        last_sma = sma_series.dropna().iloc[-1]
+        forecast_values = [last_sma] * self.steps
+        forecast_index = pd.date_range(start=self.df.index[-1] + pd.Timedelta(weeks=1), periods=self.steps, freq='W')
+        return pd.Series(forecast_values, index=forecast_index)
 
+# 🔮 ARIMA Forecaster
 class ARIMAForecaster:
     def __init__(self, df, target_column, order=(1,1,1), steps=6):
         self.series = df[target_column]
@@ -26,9 +32,11 @@ class ARIMAForecaster:
         model = ARIMA(self.series, order=self.order)
         fitted = model.fit()
         forecast = fitted.forecast(steps=self.steps)
-        forecast.index = pd.date_range(start=self.series.index[-1], periods=self.steps+1, freq='W')[1:]
+        forecast_index = pd.date_range(start=self.series.index[-1] + pd.Timedelta(weeks=1), periods=self.steps, freq='W')
+        forecast.index = forecast_index
         return forecast
 
+# 🌦️ SARIMA Forecaster
 class SARIMAForecaster:
     def __init__(self, df, target_column, order=(1,1,1), seasonal_order=(1,1,1,12), steps=6):
         self.series = df[target_column]
@@ -40,9 +48,11 @@ class SARIMAForecaster:
         model = SARIMAX(self.series, order=self.order, seasonal_order=self.seasonal_order)
         fitted = model.fit(disp=False)
         forecast = fitted.forecast(steps=self.steps)
-        forecast.index = pd.date_range(start=self.series.index[-1], periods=self.steps+1, freq='W')[1:]
+        forecast_index = pd.date_range(start=self.series.index[-1] + pd.Timedelta(weeks=1), periods=self.steps, freq='W')
+        forecast.index = forecast_index
         return forecast
 
+# 📉 ETS Forecaster
 class ETSForecaster:
     def __init__(self, df, target_column, steps=6):
         self.series = df[target_column]
@@ -52,9 +62,11 @@ class ETSForecaster:
         model = ExponentialSmoothing(self.series, trend='add', seasonal=None)
         fitted = model.fit()
         forecast = fitted.forecast(self.steps)
-        forecast.index = pd.date_range(start=self.series.index[-1], periods=self.steps+1, freq='W')[1:]
+        forecast_index = pd.date_range(start=self.series.index[-1] + pd.Timedelta(weeks=1), periods=self.steps, freq='W')
+        forecast.index = forecast_index
         return forecast
 
+# ⚙️ XGBoost Forecaster
 class XGBoostForecaster:
     def __init__(self, df, target_column, lags=6, steps=6):
         self.df = df.copy()
@@ -80,9 +92,10 @@ class XGBoostForecaster:
             preds.append(pred)
             last_row = np.roll(last_row, -1)
             last_row[0, -1] = pred
-        forecast_index = pd.date_range(start=self.df.index[-1], periods=self.steps+1, freq='W')[1:]
+        forecast_index = pd.date_range(start=self.df.index[-1] + pd.Timedelta(weeks=1), periods=self.steps, freq='W')
         return pd.Series(preds, index=forecast_index)
 
+# 📏 Evaluation Metrics
 def evaluate_forecast(true, pred):
     true = np.array(true)
     pred = np.array(pred)
