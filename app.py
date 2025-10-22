@@ -19,6 +19,7 @@ Supported formats: `.csv`, `.xlsx`
 - Column B: Numeric values (e.g., sales, revenue)
 """)
 
+# Sample data
 sample_csv = """Date,Sales
 2023-01-01,100
 2023-01-08,120
@@ -28,57 +29,96 @@ sample_csv = """Date,Sales
 2023-02-05,150
 """
 sample_bytes = io.BytesIO(sample_csv.encode("utf-8"))
-st.download_button("Download sample data", sample_bytes, "sample_data.csv", "text/csv")
+st.download_button("📥 Download sample data", sample_bytes, "sample_data.csv", "text/csv")
 
-uploaded_file = st.file_uploader("Upload your file", type=["csv", "xlsx"])
-forecast_horizon = st.slider("Number of weeks to forecast", 4, 24, 6)
+uploaded_file = st.file_uploader("📤 Upload your file", type=["csv", "xlsx"])
+forecast_horizon = st.slider("Number of periods to forecast", 4, 24, 6)
 model_choice = st.selectbox("Choose forecasting model", ["Simple MA", "ARIMA", "SARIMA", "ETS", "XGBoost"])
 
 if uploaded_file:
     try:
         if uploaded_file.name.endswith(".csv"):
             df = pd.read_csv(uploaded_file, parse_dates=['Date'])
-        elif uploaded_file.name.endswith(".xlsx"):
-            df = pd.read_excel(uploaded_file, parse_dates=['Date'])
         else:
-            st.error("Unsupported file format.")
-            st.stop()
+            df = pd.read_excel(uploaded_file, parse_dates=['Date'])
 
         df.set_index('Date', inplace=True)
-        df.index = df.index.tz_localize(None) if df.index.tz is not None else df.index
+        df.index = pd.to_datetime(df.index, errors='coerce')
+        df.dropna(subset=[df.columns[0]], inplace=True)
+        df = df.sort_index()
+        df.index = df.index.tz_localize(None)
+
+        freq = pd.infer_freq(df.index)
+        if freq is None:
+            freq = "7D"
 
         st.write("Preview of uploaded data:")
         st.dataframe(df.head())
 
         target_column = st.selectbox("Select column to forecast", df.select_dtypes(include='number').columns)
 
-        if model_choice == "Simple MA":
-            model = SimpleMA(df, target_column, steps=forecast_horizon)
-        elif model_choice == "ARIMA":
-            model = ARIMAForecaster(df, target_column, steps=forecast_horizon)
+        # Parameter inputs
+        if model_choice == "ARIMA":
+            p = st.number_input("AR order (p)", 0, 5, 1)
+            d = st.number_input("Differencing (d)", 0, 2, 1)
+            q = st.number_input("MA order (q)", 0, 5, 1)
+            model = ARIMAForecaster(df, target_column, order=(p, d, q), steps=forecast_horizon, freq=freq)
+
         elif model_choice == "SARIMA":
-            model = SARIMAForecaster(df, target_column, steps=forecast_horizon)
+            p = st.number_input("AR order (p)", 0, 5, 1)
+            d = st.number_input("Differencing (d)", 0, 2, 1)
+            q = st.number_input("MA order (q)", 0, 5, 1)
+            sp = st.number_input("Seasonal AR (P)", 0, 3, 1)
+            sd = st.number_input("Seasonal Diff (D)", 0, 2, 1)
+            sq = st.number_input("Seasonal MA (Q)", 0, 3, 1)
+            s = st.number_input("Seasonal Periods (s)", 0, 52, 12)
+            model = SARIMAForecaster(df, target_column, order=(p, d, q), seasonal_order=(sp, sd, sq, s), steps=forecast_horizon, freq=freq)
+
         elif model_choice == "ETS":
-            model = ETSForecaster(df, target_column, steps=forecast_horizon)
+            trend = st.selectbox("Trend Type", ["add", "mul", None])
+            seasonal = st.selectbox("Seasonal Type", [None, "add", "mul"])
+            model = ETSForecaster(df, target_column, trend=trend, seasonal=seasonal, steps=forecast_horizon, freq=freq)
+
         elif model_choice == "XGBoost":
-            model = XGBoostForecaster(df, target_column, steps=forecast_horizon)
+            lags = st.slider("Number of lags", 1, 12, 6)
+            model = XGBoostForecaster(df, target_column, lags=lags, steps=forecast_horizon, freq=freq)
 
-        forecast = model.forecast()
+        else:
+            model = SimpleMA(df, target_column, steps=forecast_horizon, freq=freq)
 
+        forecast, conf_int = model.forecast()
+
+        # Plot
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=df.index, y=df[target_column], name="Actual", line=dict(color="blue")))
         fig.add_trace(go.Scatter(x=forecast.index, y=forecast.values, name="Forecast", line=dict(color="orange", dash="dash"), mode="lines+markers"))
 
-        for date, value in zip(forecast.index, forecast.values):
-            fig.add_annotation(x=date, y=value, text=f"{value:.1f}", showarrow=True, arrowhead=1, ax=0, ay=-20)
+        # Confidence interval
+        if conf_int is not None:
+            fig.add_trace(go.Scatter(
+                x=conf_int.index, y=conf_int.iloc[:, 1],
+                line=dict(width=0), showlegend=False
+            ))
+            fig.add_trace(go.Scatter(
+                x=conf_int.index, y=conf_int.iloc[:, 0],
+                fill='tonexty', fillcolor='rgba(255,165,0,0.2)',
+                line=dict(width=0), name='Confidence Interval'
+            ))
 
-        fig.add_vline(x=forecast.index[0], line=dict(color="gray", dash="dot"), annotation_text="Forecast Start", annotation_position="top left")
+        fig.add_vline(x=forecast.index[0], line=dict(color="gray", dash="dot"),
+                      annotation_text="Forecast Start", annotation_position="top left")
         st.plotly_chart(fig, use_container_width=True)
 
+        # Results
         st.subheader("📅 Forecasted Values")
         forecast_df = pd.DataFrame({"Date": forecast.index, "Forecast": forecast.values})
         st.dataframe(forecast_df.style.format({"Forecast": "{:.2f}"}))
 
+        # Download option
+        csv = forecast_df.to_csv(index=False).encode('utf-8')
+        st.download_button("📤 Download Forecast Results", csv, "forecast_output.csv", "text/csv")
+
+        # Evaluation metrics
         if len(df) >= forecast_horizon:
             true = df[target_column][-forecast_horizon:]
             pred = forecast[:forecast_horizon]
