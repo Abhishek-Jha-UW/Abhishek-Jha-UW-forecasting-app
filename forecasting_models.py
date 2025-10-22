@@ -1,133 +1,115 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 from xgboost import XGBRegressor
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+import warnings
+warnings.filterwarnings("ignore")
 
-def get_forecast_index(last_date, steps, freq):
-    """Safely generate forecast index from inferred frequency."""
-    try:
-        forecast_index = pd.date_range(
-            start=last_date + pd.tseries.frequencies.to_offset(freq),
-            periods=steps,
-            freq=freq
-        )
-    except Exception:
-        # Default to weekly if inference fails
-        forecast_index = pd.date_range(start=last_date + pd.Timedelta(days=7), periods=steps, freq="7D")
-    return forecast_index
+# Utility — ensure DatetimeIndex
+def ensure_datetime_index(df):
+    df = df.copy()
+    df.index = pd.to_datetime(df.index, errors="coerce")
+    df = df.dropna(subset=[df.columns[0]])  # Drop rows where target is NA
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("The DataFrame index must be a DatetimeIndex.")
+    df = df.sort_index()
+    return df
 
-
+# Simple Moving Average
 class SimpleMA:
-    def __init__(self, df, target_column, window=4, steps=6, freq="7D"):
-        self.df = df.copy()
-        self.target_column = target_column
+    def __init__(self, df, target_col, steps=6, window=3):
+        self.df = ensure_datetime_index(df)
+        self.target = target_col
+        self.steps = steps
         self.window = window
-        self.steps = steps
-        self.freq = freq
 
     def forecast(self):
-        sma_series = self.df[self.target_column].rolling(window=self.window).mean()
-        last_sma = sma_series.dropna().iloc[-1]
-        forecast_values = [last_sma] * self.steps
-        forecast_index = get_forecast_index(self.df.index[-1], self.steps, self.freq)
-        return pd.Series(forecast_values, index=forecast_index, name="Forecast")
+        y = self.df[self.target].dropna()
+        last_date = y.index[-1]
+        freq = pd.infer_freq(y.index) or "W"
+        future_idx = pd.date_range(last_date, periods=self.steps + 1, freq=freq)[1:]
+        forecast_value = y.rolling(self.window).mean().iloc[-1]
+        forecast = pd.Series([forecast_value] * self.steps, index=future_idx)
+        return forecast
 
-
+# ARIMA Model
 class ARIMAForecaster:
-    def __init__(self, df, target_column, order=(1, 1, 1), steps=6, freq="7D"):
-        self.series = df[target_column]
-        self.order = order
+    def __init__(self, df, target_col, steps=6):
+        self.df = ensure_datetime_index(df)
+        self.target = target_col
         self.steps = steps
-        self.freq = freq
 
     def forecast(self):
-        model = ARIMA(self.series, order=self.order)
-        fitted = model.fit()
-        forecast_obj = fitted.get_forecast(steps=self.steps)
-        forecast = forecast_obj.predicted_mean
-        conf_int = forecast_obj.conf_int(alpha=0.05)
-        forecast_index = get_forecast_index(self.series.index[-1], self.steps, self.freq)
-        forecast.index = forecast_index
-        conf_int.index = forecast_index
-        return forecast, conf_int
+        y = self.df[self.target]
+        model = ARIMA(y, order=(1, 1, 1))
+        fit = model.fit()
+        forecast = fit.forecast(steps=self.steps)
+        freq = pd.infer_freq(y.index) or "W"
+        forecast.index = pd.date_range(y.index[-1], periods=self.steps + 1, freq=freq)[1:]
+        return forecast
 
-
+# SARIMA Model
 class SARIMAForecaster:
-    def __init__(self, df, target_column, order=(1, 1, 1), seasonal_order=(1, 1, 1, 12), steps=6, freq="7D"):
-        self.series = df[target_column]
-        self.order = order
-        self.seasonal_order = seasonal_order
+    def __init__(self, df, target_col, steps=6):
+        self.df = ensure_datetime_index(df)
+        self.target = target_col
         self.steps = steps
-        self.freq = freq
 
     def forecast(self):
-        model = SARIMAX(self.series, order=self.order, seasonal_order=self.seasonal_order, enforce_stationarity=False)
-        fitted = model.fit(disp=False)
-        forecast_obj = fitted.get_forecast(steps=self.steps)
-        forecast = forecast_obj.predicted_mean
-        conf_int = forecast_obj.conf_int(alpha=0.05)
-        forecast_index = get_forecast_index(self.series.index[-1], self.steps, self.freq)
-        forecast.index = forecast_index
-        conf_int.index = forecast_index
-        return forecast, conf_int
+        y = self.df[self.target]
+        model = SARIMAX(y, order=(1, 1, 1), seasonal_order=(1, 1, 1, 12))
+        fit = model.fit(disp=False)
+        forecast = fit.forecast(steps=self.steps)
+        freq = pd.infer_freq(y.index) or "W"
+        forecast.index = pd.date_range(y.index[-1], periods=self.steps + 1, freq=freq)[1:]
+        return forecast
 
-
+# ETS Model
 class ETSForecaster:
-    def __init__(self, df, target_column, trend='add', seasonal=None, steps=6, freq="7D"):
-        self.series = df[target_column]
-        self.trend = trend
-        self.seasonal = seasonal
+    def __init__(self, df, target_col, steps=6):
+        self.df = ensure_datetime_index(df)
+        self.target = target_col
         self.steps = steps
-        self.freq = freq
 
     def forecast(self):
-        model = ExponentialSmoothing(self.series, trend=self.trend, seasonal=self.seasonal)
-        fitted = model.fit()
-        forecast = fitted.forecast(self.steps)
-        forecast_index = get_forecast_index(self.series.index[-1], self.steps, self.freq)
-        forecast.index = forecast_index
-        return forecast, None
+        y = self.df[self.target]
+        model = ExponentialSmoothing(y, trend="add", seasonal="add", seasonal_periods=12)
+        fit = model.fit()
+        forecast = fit.forecast(self.steps)
+        freq = pd.infer_freq(y.index) or "W"
+        forecast.index = pd.date_range(y.index[-1], periods=self.steps + 1, freq=freq)[1:]
+        return forecast
 
-
+# XGBoost Model
 class XGBoostForecaster:
-    def __init__(self, df, target_column, lags=6, steps=6, freq="7D"):
-        self.df = df.copy()
-        self.target_column = target_column
-        self.lags = lags
+    def __init__(self, df, target_col, steps=6):
+        self.df = ensure_datetime_index(df)
+        self.target = target_col
         self.steps = steps
-        self.freq = freq
-
-    def create_features(self):
-        for i in range(1, self.lags + 1):
-            self.df[f'lag_{i}'] = self.df[self.target_column].shift(i)
-        self.df.dropna(inplace=True)
 
     def forecast(self):
-        self.create_features()
-        X = self.df[[f'lag_{i}' for i in range(1, self.lags + 1)]]
-        y = self.df[self.target_column]
-        model = XGBRegressor(verbosity=0)
-        model.fit(X, y)
-        last_row = X.iloc[-1].values.reshape(1, -1)
-        preds = []
-        for _ in range(self.steps):
-            pred = model.predict(last_row)[0]
-            preds.append(pred)
-            last_row = np.roll(last_row, -1)
-            last_row[0, -1] = pred
-        forecast_index = get_forecast_index(self.df.index[-1], self.steps, self.freq)
-        forecast = pd.Series(preds, index=forecast_index, name="Forecast")
-        return forecast, None
+        y = self.df[self.target]
+        df = y.reset_index()
+        df["time"] = np.arange(len(df))
+        X, y_train = df[["time"]], df[self.target]
+        model = XGBRegressor(n_estimators=100, learning_rate=0.1, random_state=42)
+        model.fit(X, y_train)
 
+        future_time = np.arange(len(df), len(df) + self.steps).reshape(-1, 1)
+        pred = model.predict(future_time)
 
+        freq = pd.infer_freq(y.index) or "W"
+        forecast_idx = pd.date_range(y.index[-1], periods=self.steps + 1, freq=freq)[1:]
+        forecast = pd.Series(pred, index=forecast_idx)
+        return forecast
+
+# Evaluation metrics
 def evaluate_forecast(true, pred):
     true, pred = np.array(true), np.array(pred)
-    min_len = min(len(true), len(pred))
-    true, pred = true[:min_len], pred[:min_len]
     rmse = np.sqrt(mean_squared_error(true, pred))
     mae = mean_absolute_error(true, pred)
-    mape = np.mean(np.abs((true - pred) / true)) * 100
+    mape = np.mean(np.abs((true - pred) / np.maximum(true, 1e-8))) * 100
     return rmse, mae, mape
