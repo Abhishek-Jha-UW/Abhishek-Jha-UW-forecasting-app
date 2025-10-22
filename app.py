@@ -77,8 +77,12 @@ if uploaded_file:
         forecast_df = pd.DataFrame({"Date": forecast.index, "Forecast": forecast.values})
         st.dataframe(forecast_df.style.format({"Forecast": "{:.2f}"}))
 
-        if len(df) >= forecast_horizon:
+       if len(df) >= forecast_horizon:
             true = df[target_column][-forecast_horizon:]
             pred = forecast[:forecast_horizon]
             rmse, mae, mape = evaluate_forecast(true.values, pred.values)
-            st.metric("RM
+            st.metric("RMSE", f"{rmse:.2f}")
+            st.metric("MAE", f"{mae:.2f}")
+            st.metric("MAPE", f"{mape:.2f}%")
+        else:
+            st.warning("Not enough historical data to evaluate forecast accuracy.")
