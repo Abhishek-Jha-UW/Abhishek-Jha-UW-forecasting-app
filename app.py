@@ -49,6 +49,11 @@ if uploaded_file:
             st.stop()
 
         df.set_index('Date', inplace=True)
+
+        # 🔧 Remove timezone if present
+        if df.index.tz is not None:
+            df.index = df.index.tz_convert(None)
+
         st.write("Preview of uploaded data:")
         st.dataframe(df.head())
 
