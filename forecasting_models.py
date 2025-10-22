@@ -90,7 +90,13 @@ class XGBoostForecaster:
 
 # 📏 Evaluation Metrics (Safe across environments)
 def evaluate_forecast(true, pred):
-    rmse = np.sqrt(mean_squared_error(true, pred))  # Manual RMSE
+    true = np.array(true)
+    pred = np.array(pred)
+    if len(true) != len(pred):
+        min_len = min(len(true), len(pred))
+        true = true[:min_len]
+        pred = pred[:min_len]
+    rmse = np.sqrt(mean_squared_error(true, pred))
     mae = mean_absolute_error(true, pred)
     mape = np.mean(np.abs((true - pred) / true)) * 100
     return rmse, mae, mape
