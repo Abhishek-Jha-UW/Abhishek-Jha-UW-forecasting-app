@@ -90,10 +90,10 @@ if uploaded_file:
         csv = forecast_df.to_csv(index=False).encode("utf-8")
         st.download_button("Download forecast as CSV", csv, "forecast.csv", "text/csv")
 
-        # Evaluation
+        # Evaluation (patched with .iloc)
         if len(df) >= forecast_horizon:
-            true = df[target_column][-forecast_horizon:]
-            pred = forecast[:forecast_horizon]
+            true = df[target_column].iloc[-forecast_horizon:]
+            pred = forecast.iloc[:forecast_horizon]
             rmse, mae, mape = evaluate_forecast(true.values, pred.values)
             c1, c2, c3 = st.columns(3)
             c1.metric("RMSE", f"{rmse:.2f}")
