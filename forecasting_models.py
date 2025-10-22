@@ -88,9 +88,9 @@ class XGBoostForecaster:
         forecast_index = pd.date_range(start=self.df.index[-1], periods=self.steps+1, freq='W')[1:]
         return pd.Series(preds, index=forecast_index)
 
-# 📏 Evaluation Metrics
+# 📏 Evaluation Metrics (Safe across environments)
 def evaluate_forecast(true, pred):
-    rmse = mean_squared_error(true, pred, squared=False)
+    rmse = np.sqrt(mean_squared_error(true, pred))  # Manual RMSE
     mae = mean_absolute_error(true, pred)
     mape = np.mean(np.abs((true - pred) / true)) * 100
     return rmse, mae, mape
