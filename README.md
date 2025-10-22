@@ -1,5 +1,40 @@
-# Forecasting App
+# 📈 Forecasting Tool
 
-Upload your time series data and forecast using SMA, ARIMA, Prophet, SARIMA, ETS, or XGBoost.
+A modular, user-friendly time series forecasting app built with Streamlit. Supports multiple models and Excel/CSV uploads.
 
-Built with Python and Streamlit.
+## 🔧 Features
+
+- Upload `.csv` or `.xlsx` files with a `Date` column and one numeric column
+- Choose from 5 forecasting models:
+  - Simple Moving Average
+  - ARIMA
+  - SARIMA
+  - ETS
+  - XGBoost
+- Interactive Plotly charts
+- Evaluation metrics: RMSE, MAE, MAPE
+- Sample data download for quick testing
+
+## 📁 File Format
+
+Your file should have:
+- Column A: `Date` (e.g., 2023-01-01)
+- Column B: Numeric values (e.g., sales, revenue)
+
+## 🚀 Deployment
+
+This app is ready for Streamlit Cloud. Just upload the repo and go live.
+
+## 📦 Requirements
+
+See `requirements.txt` for all dependencies.
+
+## 📊 Sample Data
+
+Download the included `sample_data.csv` to test the app instantly.
+
+## 🧠 Next Steps
+
+- Add Prophet support once deployment is stable
+- Enable model tuning and export options
+- Add dashboard-style layout and user onboarding
