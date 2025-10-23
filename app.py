@@ -100,7 +100,29 @@ with tab2:
     st.download_button("📥 Download sample data (CSV)", sample_bytes, "sample_data.csv", "text/csv")
 
     # --- File Upload ---
-    uploaded_file = st.file_uploader("📂 Upload your private files", type=["csv", "xlsx"])
+uploaded_file = st.file_uploader("📂 Upload your private files", type=["csv", "xlsx", "xls"])
+
+if uploaded_file:
+    try:
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+        elif uploaded_file.name.endswith(".xlsx"):
+            try:
+                import openpyxl
+                df = pd.read_excel(uploaded_file, engine="openpyxl")
+            except ImportError:
+                st.error("Excel file (.xlsx) support requires the 'openpyxl' package. Please install it using pip install openpyxl.")
+                st.stop()
+        elif uploaded_file.name.endswith(".xls"):
+            try:
+                import xlrd
+                df = pd.read_excel(uploaded_file, engine="xlrd")
+            except ImportError:
+                st.error("Excel file (.xls) support requires the 'xlrd' package. Please install it using pip install xlrd.")
+                st.stop()
+        else:
+            st.error("Unsupported file format. Please upload a .csv, .xlsx, or .xls file.")
+            st.stop()
 
     # --- Forecast Settings ---
     st.markdown("### 🔧 Forecast Settings")
@@ -152,7 +174,7 @@ with tab2:
 
             if compare_all:
                 st.markdown("### 📊 Model Comparison")
-                st.info("⏳This may take a few seconds. Running all models and comparing results…")
+                st.info("⏳ Running all models and comparing results. This may take a few seconds…")
                 results = []
                 all_forecasts = {}
                 for name, cls in model_map.items():
