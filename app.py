@@ -16,9 +16,10 @@ with st.sidebar:
     st.markdown("""
     1. Upload a time series file with:
        - A **Date** column in **A1**
-       - At least one **numeric column**
+       - A **numeric value** column in **B**
+       - No non-numeric columns
     2. Choose a forecasting model
-    3. Set the forecast horizon
+    3. Forecast the time series
     4. View predictions, metrics, and download results
     """)
     st.markdown("ℹ️ Models differ in how they handle trend, seasonality, and complexity.")
@@ -26,40 +27,41 @@ with st.sidebar:
 # --- Sample Data ---
 sample_csv = """Date,Sales
 2022-01-01,100
-2022-01-08,120
+2022-01-08,115
 2022-01-15,130
 2022-01-22,125
-2022-01-29,140
-2022-02-05,150
-2022-02-12,160
+2022-01-29,145
+2022-02-05,160
+2022-02-12,175
 2022-02-19,170
-2022-02-26,180
-2022-03-05,190
-2022-03-12,200
-2022-03-19,210
-2022-03-26,220
-2022-04-02,230
-2022-04-09,240
-2022-04-16,250
-2022-04-23,260
-2022-04-30,270
-2022-05-07,280
-2022-05-14,290
-2022-05-21,300
-2022-05-28,310
-2022-06-04,320
-2022-06-11,330
-2022-06-18,340
-2022-06-25,350
-2022-07-02,360
-2022-07-09,370
-2022-07-16,380
+2022-02-26,190
+2022-03-05,205
+2022-03-12,220
+2022-03-19,215
+2022-03-26,235
+2022-04-02,250
+2022-04-09,265
+2022-04-16,260
+2022-04-23,280
+2022-04-30,295
+2022-05-07,310
+2022-05-14,305
+2022-05-21,325
+2022-05-28,340
+2022-06-04,355
+2022-06-11,350
+2022-06-18,370
+2022-06-25,385
+2022-07-02,400
+2022-07-09,395
+2022-07-16,415
+2022-07-23,430
 """
 sample_bytes = io.BytesIO(sample_csv.encode("utf-8"))
 st.download_button("📥 Download sample data (CSV)", sample_bytes, "sample_data.csv", "text/csv")
 
 # --- File Upload ---
-uploaded_file = st.file_uploader("📂 Upload your time series file", type=["csv", "xlsx"])
+uploaded_file = st.file_uploader("📂 Upload your private files", type=["csv", "xlsx"])
 
 # --- Forecast Settings ---
 st.markdown("### 🔧 Forecast Settings")
@@ -73,7 +75,18 @@ with col2:
         help="Simple MA: Moving average\nARIMA: Autoregressive Integrated Moving Average\nSARIMA: Seasonal ARIMA\nETS: Exponential Smoothing\nXGBoost: Tree-based regression"
     )
 
+with st.expander("📘 What do these models mean?"):
+    st.markdown("""
+    - **Simple MA**: Averages recent values. Best for stable trends.
+    - **ARIMA**: Captures trend and autocorrelation. Good for non-seasonal data.
+    - **SARIMA**: Adds seasonality to ARIMA. Best for periodic patterns.
+    - **ETS**: Exponential smoothing. Adapts to trend and seasonality.
+    - **XGBoost**: Tree-based regression. Handles complex patterns.
+    """)
+
 compare_all = st.checkbox("📊 Compare all models")
+if compare_all:
+    st.info("⏳ Comparing all models may take a few seconds. Please be patient while forecasts and metrics are generated.")
 
 # --- Main Logic ---
 if uploaded_file:
@@ -171,6 +184,7 @@ if uploaded_file:
             st.download_button("📥 Download forecast as CSV", csv, "forecast.csv", "text/csv")
 
             # Evaluation
+                        # Evaluation
             if len(df) >= forecast_horizon:
                 true = df[target_column].iloc[-forecast_horizon:].values
                 pred = forecast.reset_index(drop=True).iloc[:forecast_horizon].values
@@ -185,6 +199,9 @@ if uploaded_file:
                     st.caption(f"Model parameters: {model_choice} with default seasonal and trend settings")
             else:
                 st.warning("Not enough historical data to evaluate forecast accuracy.")
-
     except Exception as e:
         st.error(f"Error processing file or forecast: {e}")
+
+# --- Footer ---
+st.markdown("---")
+st.markdown("Made with ❤️ by Abhishek Jha", unsafe_allow_html=True)
