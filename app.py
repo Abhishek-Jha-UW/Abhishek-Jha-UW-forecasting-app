@@ -16,38 +16,9 @@ tab2, tab1 = st.tabs(["📈 Forecasting Tool", "📘 Project Overview"])
 with tab1:
     st.title("📘 About the Project")
     st.markdown("""
-    When I started as an analyst, I noticed most forecasting was done in Excel using Simple Moving Averages. From sales estimates to raw material tracking, it gave rough trends, but wasn’t reliable enough for confident decisions.
-
-    That’s what led me to build this app.
-
-    I’ve worked with real company data and deployed forecasting models in actual business settings, helping teams time purchases, align with market trends, and reduce costs. One example: predicting steel price dips to optimize raw material procurement, which led to 3–5% savings.
-
-    But not everyone knows Python, and building machine learning models for every forecasting need isn’t practical. So I created a no-code tool that anyone can use:
-
-    Upload an Excel file,  
-    Run five models (Simple MA, ARIMA, SARIMA, ETS, XGBoost),  
-    Get a best-fit recommendation based on error metrics,  
-    Visualize and download results instantly.  
-
-    Even tools like Power BI and Tableau can’t do this natively without Python or DAX scripts.
-
-    **Why not just build one ML model?**  
-    Because ML works best later, once you have large, clean datasets and a specific use case. Most teams need quick, reliable forecasts across many time series without heavy setup or engineering overhead.
-
-    This tool helps you start smarter—it compares models, recommends the best one, and gives you actionable forecasts fast.
-
-    **Use Cases:**  
-    Sales and demand forecasting,  
-    Inventory and price prediction,  
-    Inflation and macroeconomic trend estimation,  
-    Energy consumption tracking,  
-    Website traffic forecasting,  
-    Manufacturing throughput planning,  
-    Budget burn and financial projections,  
-    Any time series data across weeks, months, or quarters.  
-
-    **What’s next?**  
-    Prophet, bootstrapped ensembles, and more models are coming soon.
+    This app compares five forecasting models and recommends the best one based on RMSE.  
+    Upload your time series data, choose a model, and download the forecast.  
+    Built for analysts, planners, and decision-makers who need fast, reliable forecasts.
     """)
 
 with tab2:
@@ -64,19 +35,8 @@ with tab2:
         3. Forecast the time series
         4. View and download results
         """)
-        with st.expander("📘 About This App"):
-            st.markdown("""
-            This app was built to move beyond Simple Moving Averages for forecasting.  
-            It helps find the best-fit model first—no coding required.
 
-            Use it for:
-            - Sales volume forecasting  
-            - Inventory analysis  
-            - Inflation trend prediction  
-            - Any time series over weeks, months, or quarters
-            """)
-
-    # --- Synthetic Sample Data ---
+    # --- Sample Data ---
     np.random.seed(42)
     dates = pd.date_range(start="2022-01-01", periods=60, freq="W")
     trend = np.linspace(100, 300, 60)
@@ -103,7 +63,7 @@ with tab2:
                 import xlrd
                 df = pd.read_excel(uploaded_file, engine="xlrd")
             else:
-                st.error("Unsupported file format. Please upload a .csv, .xlsx, or .xls file.")
+                st.error("Unsupported file format.")
                 st.stop()
 
             # --- Forecast Settings ---
@@ -121,7 +81,7 @@ with tab2:
 
             # --- Data Prep ---
             if "Date" not in df.columns:
-                st.error("Missing 'Date' column. Please ensure your file has a 'Date' column.")
+                st.error("Missing 'Date' column.")
                 st.stop()
 
             df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
@@ -130,13 +90,24 @@ with tab2:
 
             numeric_cols = df.select_dtypes(include="number").columns
             if len(numeric_cols) == 0:
-                st.error("No numeric column found for forecasting.")
+                st.error("No numeric column found.")
                 st.stop()
 
             st.write("### 🧾 Preview of Uploaded Data")
             st.dataframe(df.head())
 
             target_column = st.selectbox("Select column to forecast", numeric_cols)
+
+            # --- Future Date Generator ---
+            def generate_future_dates(index, horizon):
+                recent = index[-5:]
+                deltas = recent.to_series().diff().dropna()
+                avg_gap = deltas.mean()
+                future_dates = [index[-1] + (i + 1) * avg_gap for i in range(horizon)]
+                return future_dates, avg_gap
+
+            future_dates, avg_gap = generate_future_dates(df.index, forecast_horizon)
+            st.info(f"🕒 Average step size: {avg_gap}")
 
             model_map = {
                 "Simple MA": SimpleMA,
@@ -170,7 +141,7 @@ with tab2:
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=df.index, y=df[target_column], name="Actual", line=dict(color="blue")))
                     fig.add_trace(go.Scatter(
-                        x=pd.date_range(df.index[-1], periods=forecast_horizon + 1, freq="W")[1:],
+                        x=future_dates,
                         y=best_forecast.values,
                         name="Forecast",
                         line=dict(color="green", dash="dash"),
@@ -179,7 +150,7 @@ with tab2:
                     st.plotly_chart(fig, use_container_width=True)
 
                     forecast_df = pd.DataFrame({
-                        "Date": pd.date_range(df.index[-1], periods=forecast_horizon + 1, freq="W")[1:],
+                        "Date": future_dates,
                         "Forecast": best_forecast.values
                     })
                     st.dataframe(forecast_df)
@@ -194,7 +165,7 @@ with tab2:
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=df.index, y=df[target_column], name="Actual", line=dict(color="blue")))
                 fig.add_trace(go.Scatter(
-                    x=pd.date_range(df.index[-1], periods=forecast_horizon + 1, freq="W")[1:],
+                    x=future_dates,
                     y=forecast.values,
                     name="Forecast",
                     line=dict(color="orange", dash="dash"),
@@ -203,7 +174,7 @@ with tab2:
                 st.plotly_chart(fig, use_container_width=True)
 
                 forecast_df = pd.DataFrame({
-                    "Date": pd.date_range(df.index[-1], periods=forecast_horizon + 1, freq="W")[1:],
+                    "Date": future_dates,
                     "Forecast": forecast.values
                 })
                 st.dataframe(forecast_df)
@@ -215,4 +186,4 @@ with tab2:
 
 # --- Footer ---
 st.markdown("---")
-st.markdown("Made with ❤️ by Abhishek Jha", unsafe_allow_html=True)
+st.markdown("Made with ❤️ by Mithilesh", unsafe_allow_html=True)
