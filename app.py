@@ -16,7 +16,7 @@ tab2, tab1 = st.tabs(["📈 Forecasting Tool", "📘 Project Overview"])
 with tab1:
     st.title("📘 About the Project")
     st.markdown("""
-    When I started as a cost engineer, I noticed most forecasting was done in Excel using Simple Moving Averages. From sales estimates to raw material tracking, it gave rough trends, but wasn’t reliable enough for confident decisions.
+    When I started as an analyst, I noticed most forecasting was done in Excel using Simple Moving Averages. From sales estimates to raw material tracking, it gave rough trends, but wasn’t reliable enough for confident decisions.
 
     That’s what led me to build this app.
 
