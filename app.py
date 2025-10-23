@@ -45,6 +45,15 @@ sample_csv = """Date,Sales
 2022-04-30,270
 2022-05-07,280
 2022-05-14,290
+2022-05-21,300
+2022-05-28,310
+2022-06-04,320
+2022-06-11,330
+2022-06-18,340
+2022-06-25,350
+2022-07-02,360
+2022-07-09,370
+2022-07-16,380
 """
 sample_bytes = io.BytesIO(sample_csv.encode("utf-8"))
 st.download_button("📥 Download sample data (CSV)", sample_bytes, "sample_data.csv", "text/csv")
@@ -61,8 +70,10 @@ with col2:
     model_choice = st.selectbox(
         "Select a forecasting model (hover to learn more)",
         ["Simple MA", "ARIMA", "SARIMA", "ETS", "XGBoost"],
-        help="Simple MA: Moving average\n\nARIMA: Autoregressive Integrated Moving Average\n\nSARIMA: Seasonal ARIMA\n\nETS: Exponential Smoothing\n\nXGBoost: Tree-based regression"
+        help="Simple MA: Moving average\nARIMA: Autoregressive Integrated Moving Average\nSARIMA: Seasonal ARIMA\nETS: Exponential Smoothing\nXGBoost: Tree-based regression"
     )
+
+compare_all = st.checkbox("📊 Compare all models")
 
 # --- Main Logic ---
 if uploaded_file:
@@ -92,7 +103,6 @@ if uploaded_file:
 
         target_column = st.selectbox("Select column to forecast", numeric_cols)
 
-        # Initialize model
         model_map = {
             "Simple MA": SimpleMA,
             "ARIMA": ARIMAForecaster,
@@ -100,46 +110,81 @@ if uploaded_file:
             "ETS": ETSForecaster,
             "XGBoost": XGBoostForecaster,
         }
-        model = model_map[model_choice](df, target_column, steps=forecast_horizon)
-        forecast = model.forecast()
 
-        # Plot forecast
-        st.markdown("### 📊 Forecast Visualization")
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=list(range(len(df))), y=df[target_column].values, name="Actual", line=dict(color="blue")))
-        fig.add_trace(go.Scatter(
-            x=list(range(len(df), len(df) + forecast_horizon)),
-            y=forecast.values,
-            name="Forecast",
-            line=dict(color="orange", dash="dash"),
-            mode="lines+markers",
-            text=[f"Step {i+1}: {v:.2f}" for i, v in enumerate(forecast.values)],
-            hoverinfo="text"
-        ))
-        fig.add_vline(x=len(df), line=dict(color="gray", dash="dot"),
-                      annotation_text="Forecast Start", annotation_position="top left")
-        st.plotly_chart(fig, use_container_width=True)
+        if compare_all:
+            st.markdown("### 📊 Model Comparison")
+            results = []
+            all_forecasts = {}
+            for name, cls in model_map.items():
+                model = cls(df, target_column, steps=forecast_horizon)
+                forecast = model.forecast()
+                all_forecasts[name] = forecast
+                if len(df) >= forecast_horizon:
+                    true = df[target_column].iloc[-forecast_horizon:].values
+                    pred = forecast.reset_index(drop=True).iloc[:forecast_horizon].values
+                    rmse, mae, mape = evaluate_forecast(true, pred)
+                    results.append({"Model": name, "RMSE": rmse, "MAE": mae, "MAPE": mape})
+            if results:
+                comp_df = pd.DataFrame(results).sort_values("RMSE")
+                st.dataframe(comp_df.style.format({"RMSE": "{:.2f}", "MAE": "{:.2f}", "MAPE": "{:.2f}"}))
+                best_model = comp_df.iloc[0]["Model"]
+                st.success(f"✅ Best model based on RMSE: {best_model}")
 
-        # Forecast table
-        st.subheader("📅 Forecasted Values")
-        forecast_df = pd.DataFrame({"Step": list(range(1, forecast_horizon + 1)), "Forecast": forecast.values})
-        st.dataframe(forecast_df.style.format({"Forecast": "{:.2f}"}))
-
-        # Download
-        csv = forecast_df.to_csv(index=False).encode("utf-8")
-        st.download_button("📥 Download forecast as CSV", csv, "forecast.csv", "text/csv")
-
-        # Evaluation
-        if len(df) >= forecast_horizon:
-            true = df[target_column].iloc[-forecast_horizon:].values
-            pred = forecast.reset_index(drop=True).iloc[:forecast_horizon].values
-            rmse, mae, mape = evaluate_forecast(true, pred)
-            c1, c2, c3 = st.columns(3)
-            c1.metric("RMSE", f"{rmse:.2f}")
-            c2.metric("MAE", f"{mae:.2f}")
-            c3.metric("MAPE", f"{mape:.2f}%")
+                # Download all forecasts
+                combined = pd.DataFrame()
+                for name, forecast in all_forecasts.items():
+                    temp = pd.DataFrame({"Step": list(range(1, forecast_horizon + 1)), name: forecast.values})
+                    if combined.empty:
+                        combined = temp
+                    else:
+                        combined = pd.merge(combined, temp, on="Step")
+                csv_all = combined.to_csv(index=False).encode("utf-8")
+                st.download_button("📥 Download all forecasts as CSV", csv_all, "all_forecasts.csv", "text/csv")
         else:
-            st.warning("Not enough historical data to evaluate forecast accuracy.")
+            model = model_map[model_choice](df, target_column, steps=forecast_horizon)
+            forecast = model.forecast()
+
+            # Plot forecast
+            st.markdown("### 📊 Forecast Visualization")
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=list(range(len(df))), y=df[target_column].values, name="Actual", line=dict(color="blue")))
+            fig.add_trace(go.Scatter(
+                x=list(range(len(df), len(df) + forecast_horizon)),
+                y=forecast.values,
+                name="Forecast",
+                line=dict(color="orange", dash="dash"),
+                mode="lines+markers",
+                text=[f"Step {i+1}: {v:.2f}" for i, v in enumerate(forecast.values)],
+                hoverinfo="text"
+            ))
+            fig.add_vline(x=len(df), line=dict(color="gray", dash="dot"),
+                          annotation_text="Forecast Start", annotation_position="top left")
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Forecast table
+            st.subheader("📅 Forecasted Values")
+            forecast_df = pd.DataFrame({"Step": list(range(1, forecast_horizon + 1)), "Forecast": forecast.values})
+            st.dataframe(forecast_df.style.format({"Forecast": "{:.2f}"}))
+
+            # Download
+            csv = forecast_df.to_csv(index=False).encode("utf-8")
+            st.download_button("📥 Download forecast as CSV", csv, "forecast.csv", "text/csv")
+
+            # Evaluation
+            if len(df) >= forecast_horizon:
+                true = df[target_column].iloc[-forecast_horizon:].values
+                pred = forecast.reset_index(drop=True).iloc[:forecast_horizon].values
+                rmse, mae, mape = evaluate_forecast(true, pred)
+                c1, c2, c3 = st.columns(3)
+                c1.metric("RMSE", f"{rmse:.2f}")
+                c2.metric("MAE", f"{mae:.2f}")
+                c3.metric("MAPE", f"{mape:.2f}%")
+
+                # Model parameters (basic display)
+                if model_choice in ["ARIMA", "SARIMA"]:
+                    st.caption(f"Model parameters: {model_choice} with default seasonal and trend settings")
+            else:
+                st.warning("Not enough historical data to evaluate forecast accuracy.")
 
     except Exception as e:
         st.error(f"Error processing file or forecast: {e}")
