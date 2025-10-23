@@ -23,7 +23,27 @@ with st.sidebar:
     3. Forecast the time series
     4. View predictions, metrics, and download results
     """)
-    st.markdown("ℹ️ Models differ in how they handle trend, seasonality, and complexity.")
+    with st.expander("📘 About This App"):
+        st.markdown("""
+        This app helps users forecast time series data using five models:
+        - Simple MA
+        - ARIMA
+        - SARIMA
+        - ETS
+        - XGBoost
+
+        🔍 Compare models, visualize forecasts, and download results.
+
+        💡 Why? Many tools default to simple averages. This app shows how better models outperform them—especially on noisy or seasonal data.
+
+        📁 Sample format:
+        | Date       | Sales |
+        |------------|-------|
+        | 2022-01-01 | 100   |
+        | 2022-01-08 | 115   |
+
+        Made with ❤️ by Abhishek Jha
+        """)
 
 # --- Synthetic Sample Data ---
 np.random.seed(42)
@@ -115,7 +135,6 @@ if uploaded_file:
                     pred = forecast.reset_index(drop=True).iloc[:forecast_horizon].values
                     rmse, mae, mape = evaluate_forecast(true, pred)
                     results.append({"Model": name, "RMSE": rmse, "MAE": mae, "MAPE": mape})
-
             if results:
                 comp_df = pd.DataFrame(results).sort_values("RMSE")
                 st.dataframe(comp_df.style.format({"RMSE": "{:.2f}", "MAE": "{:.2f}", "MAPE": "{:.2f}"}))
@@ -181,7 +200,6 @@ if uploaded_file:
                 c2.metric("MAE", f"{mae:.2f}")
                 c3.metric("MAPE", f"{mape:.2f}%")
 
-                # Model parameters (basic display)
                 if model_choice in ["ARIMA", "SARIMA"]:
                     st.caption(f"Model parameters: {model_choice} with default seasonal and trend settings")
             else:
