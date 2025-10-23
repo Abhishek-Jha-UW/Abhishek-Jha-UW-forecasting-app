@@ -10,6 +10,22 @@ from forecasting_models import (
 
 st.set_page_config(page_title="Forecasting Tool", layout="wide")
 
+# Helper to format a pandas Timedelta in friendly text
+def format_timedelta(td: pd.Timedelta) -> str:
+    if pd.isna(td):
+        return "n/a"
+    total_seconds = int(td.total_seconds())
+    days, rem = divmod(total_seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, seconds = divmod(rem, 60)
+    if days >= 1:
+        return f"{days} day{'s' if days != 1 else ''}"
+    if hours >= 1:
+        return f"{hours} hour{'s' if hours != 1 else ''}"
+    if minutes >= 1:
+        return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    return f"{seconds} second{'s' if seconds != 1 else ''}"
+
 # --- Tabs: Project Overview + Forecasting ---
 tab2, tab1 = st.tabs(["📈 Forecasting Tool", "📘 Project Overview"])
 
@@ -148,13 +164,19 @@ with tab2:
 
             # Detect average time step
             if len(df.index) > 1:
-                avg_step = (df.index[1:] - df.index[:-1]).median()
+                # use median of diffs to be robust to outliers
+                avg_step = (df.index.to_series().diff().dropna()).median()
             else:
                 avg_step = pd.Timedelta("7D")  # fallback if only one row
 
+            # human friendly
+            avg_step_text = format_timedelta(avg_step)
+
             if compare_all:
+                # show helpful info while longer calculations run
+                st.info("⏳ This may take a few seconds while models are being compared...")
+
                 st.markdown("### 📊 Model Comparison")
-                st.info("⏳ Running all models and comparing results…")
                 results, all_forecasts = [], {}
                 for name, cls in model_map.items():
                     model = cls(df, target_column, steps=forecast_horizon)
@@ -174,7 +196,7 @@ with tab2:
 
                     best_forecast = all_forecasts[best_model]
 
-                    # Generate accurate future dates
+                    # Generate accurate future dates using detected avg_step
                     future_dates = pd.date_range(start=df.index[-1] + avg_step, periods=forecast_horizon, freq=avg_step)
 
                     fig = go.Figure()
@@ -186,7 +208,13 @@ with tab2:
                         line=dict(color="green", dash="dash"),
                         mode="lines+markers"
                     ))
+                    # add vertical line marking forecast start
+                    fig.add_vline(x=df.index[-1], line=dict(color="gray", dash="dot"))
+                    fig.update_layout(xaxis_title="Date", yaxis_title=target_column)
                     st.plotly_chart(fig, use_container_width=True)
+
+                    # show average step size below the chart
+                    st.markdown(f"**Average step size:** {avg_step_text}")
 
                     forecast_df = pd.DataFrame({
                         "Date": future_dates,
@@ -195,12 +223,14 @@ with tab2:
                     st.dataframe(forecast_df)
                     csv_best = forecast_df.to_csv(index=False).encode("utf-8")
                     st.download_button(f"📥 Download {best_model} forecast", csv_best, f"{best_model}_forecast.csv", "text/csv")
+                else:
+                    st.warning("Not enough data to compare models or evaluate metrics.")
 
             else:
                 model = model_map[model_choice](df, target_column, steps=forecast_horizon)
                 forecast = model.forecast()
 
-                # Generate accurate future dates
+                # Generate accurate future dates using detected avg_step
                 future_dates = pd.date_range(start=df.index[-1] + avg_step, periods=forecast_horizon, freq=avg_step)
 
                 st.markdown("### 📊 Forecast Visualization")
@@ -213,7 +243,12 @@ with tab2:
                     line=dict(color="orange", dash="dash"),
                     mode="lines+markers"
                 ))
+                fig.add_vline(x=df.index[-1], line=dict(color="gray", dash="dot"))
+                fig.update_layout(xaxis_title="Date", yaxis_title=target_column)
                 st.plotly_chart(fig, use_container_width=True)
+
+                # show average step size below the chart
+                st.markdown(f"**Average step size:** {avg_step_text}")
 
                 forecast_df = pd.DataFrame({
                     "Date": future_dates,
