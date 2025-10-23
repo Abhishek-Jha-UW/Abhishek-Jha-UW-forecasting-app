@@ -115,6 +115,7 @@ if uploaded_file:
                     pred = forecast.reset_index(drop=True).iloc[:forecast_horizon].values
                     rmse, mae, mape = evaluate_forecast(true, pred)
                     results.append({"Model": name, "RMSE": rmse, "MAE": mae, "MAPE": mape})
+
             if results:
                 comp_df = pd.DataFrame(results).sort_values("RMSE")
                 st.dataframe(comp_df.style.format({"RMSE": "{:.2f}", "MAE": "{:.2f}", "MAPE": "{:.2f}"}))
@@ -144,7 +145,7 @@ if uploaded_file:
                 csv_best = forecast_df.to_csv(index=False).encode("utf-8")
                 st.download_button(f"📥 Download {best_model} forecast", csv_best, f"{best_model}_forecast.csv", "text/csv")
 
-            else:
+        else:
             model = model_map[model_choice](df, target_column, steps=forecast_horizon)
             forecast = model.forecast()
 
@@ -181,7 +182,7 @@ if uploaded_file:
                 c3.metric("MAPE", f"{mape:.2f}%")
 
                 # Model parameters (basic display)
-            if model_choice in ["ARIMA", "SARIMA"]:
+                if model_choice in ["ARIMA", "SARIMA"]:
                     st.caption(f"Model parameters: {model_choice} with default seasonal and trend settings")
             else:
                 st.warning("Not enough historical data to evaluate forecast accuracy.")
