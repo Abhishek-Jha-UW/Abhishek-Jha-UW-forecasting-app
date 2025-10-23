@@ -170,20 +170,26 @@ if uploaded_file:
             csv = forecast_df.to_csv(index=False).encode("utf-8")
             st.download_button("📥 Download forecast as CSV", csv, "forecast.csv", "text/csv")
 
-            if len(df) >= forecast_horizon:
+                        if len(df) >= forecast_horizon:
                 true = df[target_column].iloc[-forecast_horizon:].values
                 pred = forecast.reset_index(drop=True).iloc[:forecast_horizon].values
                 rmse, mae, mape = evaluate_forecast(true, pred)
-                    c1, c2, c3 = st.columns(3)
-    c1.metric("RMSE", f"{rmse:.2f}")
-    c2.metric("MAE", f"{mae:.2f}")
-    c3.metric("MAPE", f"{mape:.2f}%")
 
-    # Model parameters (basic display)
-    if model_choice in ["ARIMA", "SARIMA"]:
-        st.caption(f"Model parameters: {model_choice} with default seasonal and trend settings")
-else:
-    st.warning("Not enough historical data to evaluate forecast accuracy.")
+                c1, c2, c3 = st.columns(3)
+                c1.metric("RMSE", f"{rmse:.2f}")
+                c2.metric("MAE", f"{mae:.2f}")
+                c3.metric("MAPE", f"{mape:.2f}%")
+
+                # Model parameters (basic display)
+                if model_choice in ["ARIMA", "SARIMA"]:
+                    st.caption(f"Model parameters: {model_choice} with default seasonal and trend settings")
+            else:
+                st.warning("Not enough historical data to evaluate forecast accuracy.")
+
+    except Exception as e:
+        st.error(f"Error processing file or forecast: {e}")
+
 # --- Footer ---
 st.markdown("---")
 st.markdown("Made with ❤️ by Abhishek Jha", unsafe_allow_html=True)
+
