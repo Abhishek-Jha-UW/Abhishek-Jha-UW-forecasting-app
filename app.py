@@ -144,7 +144,7 @@ if uploaded_file:
                 csv_best = forecast_df.to_csv(index=False).encode("utf-8")
                 st.download_button(f"📥 Download {best_model} forecast", csv_best, f"{best_model}_forecast.csv", "text/csv")
 
-        else:
+                else:
             model = model_map[model_choice](df, target_column, steps=forecast_horizon)
             forecast = model.forecast()
 
@@ -170,7 +170,7 @@ if uploaded_file:
             csv = forecast_df.to_csv(index=False).encode("utf-8")
             st.download_button("📥 Download forecast as CSV", csv, "forecast.csv", "text/csv")
 
-                        if len(df) >= forecast_horizon:
+            if len(df) >= forecast_horizon:
                 true = df[target_column].iloc[-forecast_horizon:].values
                 pred = forecast.reset_index(drop=True).iloc[:forecast_horizon].values
                 rmse, mae, mape = evaluate_forecast(true, pred)
@@ -192,4 +192,3 @@ if uploaded_file:
 # --- Footer ---
 st.markdown("---")
 st.markdown("Made with ❤️ by Abhishek Jha", unsafe_allow_html=True)
-
