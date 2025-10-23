@@ -152,6 +152,7 @@ with tab2:
 
             if compare_all:
                 st.markdown("### 📊 Model Comparison")
+                st.info("⏳ Running all models and comparing results. This may take a few seconds…")
                 results = []
                 all_forecasts = {}
                 for name, cls in model_map.items():
