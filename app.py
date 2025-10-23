@@ -34,9 +34,9 @@ with tab1:
     **Why not just build one ML model?**  
     Because ML works best later, once you have large, clean datasets and a specific use case. Most teams need quick, reliable forecasts across many time series without heavy setup or engineering overhead.
 
-    This tool helps you start smarter, it compares models, recommends the best one, and gives you actionable forecasts—fast.
+    This tool helps you start smarter—it compares models, recommends the best one, and gives you actionable forecasts fast.
 
-    **Use Cases (just a few examples):**  
+    **Use Cases:**  
     Sales and demand forecasting,  
     Inventory and price prediction,  
     Inflation and macroeconomic trend estimation,  
@@ -47,11 +47,7 @@ with tab1:
     Any time series data across weeks, months, or quarters.  
 
     **What’s next?**  
-    I’m actively expanding the model library—Prophet, bootstrapped ensembles, and more are on the way. The goal is to make advanced forecasting accessible to everyone, without needing to write a single line of code.
-
-    This app reflects what I’ve implemented in the companies I’ve worked with, and now I’m making it available to anyone who wants smarter, faster forecasting.
-
-    Would love your feedback, ideas, and use cases you’d like to see supported.
+    Prophet, bootstrapped ensembles, and more models are coming soon.
     """)
 
 with tab2:
@@ -64,26 +60,20 @@ with tab2:
         1. Upload a time series file with:
            - A **Date** column in **A1**
            - A **numeric value** column in **B**
-           - No non-numeric columns
         2. Choose a forecasting model
         3. Forecast the time series
-        4. View predictions, metrics, and download results
+        4. View and download results
         """)
         with st.expander("📘 About This App"):
             st.markdown("""
-            This app was born from a real-world challenge: relying on Simple Moving Average for critical forecasts—from RM pricing to inventory planning.
-
-            I’ve seen how better models can drive smarter decisions, like timing steel purchases to match market dips—saving 3–5% in costs.
-
-            But building ML models for every small prediction isn’t scalable. This tool helps you find the best-fit model first—no coding required.
+            This app was built to move beyond Simple Moving Averages for forecasting.  
+            It helps find the best-fit model first—no coding required.
 
             Use it for:
-            - Sales volume forecasting
-            - Inventory analysis
-            - Inflation trend prediction
+            - Sales volume forecasting  
+            - Inventory analysis  
+            - Inflation trend prediction  
             - Any time series over weeks, months, or quarters
-
-            More models coming soon—including Meta’s Prophet and bootstrapped ensembles.
             """)
 
     # --- Synthetic Sample Data ---
@@ -100,58 +90,42 @@ with tab2:
     st.download_button("📥 Download sample data (CSV)", sample_bytes, "sample_data.csv", "text/csv")
 
     # --- File Upload ---
-uploaded_file = st.file_uploader("📂 Upload your private files", type=["csv", "xlsx", "xls"])
+    uploaded_file = st.file_uploader("📂 Upload your data file", type=["csv", "xlsx", "xls"])
 
-if uploaded_file:
-    try:
-        if uploaded_file.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file)
-        elif uploaded_file.name.endswith(".xlsx"):
-            try:
-                import openpyxl
-                df = pd.read_excel(uploaded_file, engine="openpyxl")
-            except ImportError:
-                st.error("Excel file (.xlsx) support requires the 'openpyxl' package. Please install it using pip install openpyxl.")
-                st.stop()
-        elif uploaded_file.name.endswith(".xls"):
-            try:
-                import xlrd
-                df = pd.read_excel(uploaded_file, engine="xlrd")
-            except ImportError:
-                st.error("Excel file (.xls) support requires the 'xlrd' package. Please install it using pip install xlrd.")
-                st.stop()
-        else:
-            st.error("Unsupported file format. Please upload a .csv, .xlsx, or .xls file.")
-            st.stop()
-
-    # --- Forecast Settings ---
-    st.markdown("### 🔧 Forecast Settings")
-    col1, col2 = st.columns(2)
-    with col1:
-        forecast_horizon = st.slider("Number of periods to forecast", 4, 24, 6)
-    with col2:
-        model_choice = st.selectbox(
-            "Select a forecasting model",
-            ["Simple MA", "ARIMA", "SARIMA", "ETS", "XGBoost"]
-        )
-
-    compare_all = st.checkbox("📊 Compare all models")
-
-    # --- Main Logic ---
     if uploaded_file:
         try:
             if uploaded_file.name.endswith(".csv"):
                 df = pd.read_csv(uploaded_file)
+            elif uploaded_file.name.endswith(".xlsx"):
+                import openpyxl
+                df = pd.read_excel(uploaded_file, engine="openpyxl")
+            elif uploaded_file.name.endswith(".xls"):
+                import xlrd
+                df = pd.read_excel(uploaded_file, engine="xlrd")
             else:
-                df = pd.read_excel(uploaded_file)
+                st.error("Unsupported file format. Please upload a .csv, .xlsx, or .xls file.")
+                st.stop()
 
+            # --- Forecast Settings ---
+            st.markdown("### 🔧 Forecast Settings")
+            col1, col2 = st.columns(2)
+            with col1:
+                forecast_horizon = st.slider("Number of periods to forecast", 4, 24, 6)
+            with col2:
+                model_choice = st.selectbox(
+                    "Select a forecasting model",
+                    ["Simple MA", "ARIMA", "SARIMA", "ETS", "XGBoost"]
+                )
+
+            compare_all = st.checkbox("📊 Compare all models")
+
+            # --- Data Prep ---
             if "Date" not in df.columns:
-                st.error("Missing 'Date' column. Please ensure your file has a 'Date' column in A1.")
+                st.error("Missing 'Date' column. Please ensure your file has a 'Date' column.")
                 st.stop()
 
             df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-            df = df.dropna(subset=["Date"]).set_index("Date")
-            df = df.sort_index()
+            df = df.dropna(subset=["Date"]).set_index("Date").sort_index()
             df.index = df.index.tz_localize(None) if df.index.tz is not None else df.index
 
             numeric_cols = df.select_dtypes(include="number").columns
@@ -174,9 +148,8 @@ if uploaded_file:
 
             if compare_all:
                 st.markdown("### 📊 Model Comparison")
-                st.info("⏳ Running all models and comparing results. This may take a few seconds…")
-                results = []
-                all_forecasts = {}
+                st.info("⏳ Running all models and comparing results…")
+                results, all_forecasts = [], {}
                 for name, cls in model_map.items():
                     model = cls(df, target_column, steps=forecast_horizon)
                     forecast = model.forecast()
@@ -186,6 +159,7 @@ if uploaded_file:
                         pred = forecast.reset_index(drop=True).iloc[:forecast_horizon].values
                         rmse, mae, mape = evaluate_forecast(true, pred)
                         results.append({"Model": name, "RMSE": rmse, "MAE": mae, "MAPE": mape})
+
                 if results:
                     comp_df = pd.DataFrame(results).sort_values("RMSE")
                     st.dataframe(comp_df.style.format({"RMSE": "{:.2f}", "MAE": "{:.2f}", "MAPE": "{:.2f}"}))
@@ -194,23 +168,21 @@ if uploaded_file:
 
                     best_forecast = all_forecasts[best_model]
                     fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=list(range(len(df))), y=df[target_column].values, name="Actual", line=dict(color="blue")))
+                    fig.add_trace(go.Scatter(x=df.index, y=df[target_column], name="Actual", line=dict(color="blue")))
                     fig.add_trace(go.Scatter(
-                        x=list(range(len(df), len(df) + forecast_horizon)),
+                        x=pd.date_range(df.index[-1], periods=forecast_horizon + 1, freq="W")[1:],
                         y=best_forecast.values,
                         name="Forecast",
                         line=dict(color="green", dash="dash"),
-                        mode="lines+markers",
-                        text=[f"Step {i+1}: {v:.2f}" for i, v in enumerate(best_forecast.values)],
-                        hoverinfo="text"
+                        mode="lines+markers"
                     ))
-                    fig.add_vline(x=len(df), line=dict(color="gray", dash="dot"),
-                                  annotation_text="Forecast Start", annotation_position="top left")
                     st.plotly_chart(fig, use_container_width=True)
 
-                    st.subheader("📅 Forecasted Values (Best Model)")
-                    forecast_df = pd.DataFrame({"Step": list(range(1, forecast_horizon + 1)), "Forecast": best_forecast.values})
-                    st.dataframe(forecast_df.style.format({"Forecast": "{:.2f}"}))
+                    forecast_df = pd.DataFrame({
+                        "Date": pd.date_range(df.index[-1], periods=forecast_horizon + 1, freq="W")[1:],
+                        "Forecast": best_forecast.values
+                    })
+                    st.dataframe(forecast_df)
                     csv_best = forecast_df.to_csv(index=False).encode("utf-8")
                     st.download_button(f"📥 Download {best_model} forecast", csv_best, f"{best_model}_forecast.csv", "text/csv")
 
@@ -220,44 +192,27 @@ if uploaded_file:
 
                 st.markdown("### 📊 Forecast Visualization")
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(x=list(range(len(df))), y=df[target_column].values, name="Actual", line=dict(color="blue")))
+                fig.add_trace(go.Scatter(x=df.index, y=df[target_column], name="Actual", line=dict(color="blue")))
                 fig.add_trace(go.Scatter(
-                    x=list(range(len(df), len(df) + forecast_horizon)),
+                    x=pd.date_range(df.index[-1], periods=forecast_horizon + 1, freq="W")[1:],
                     y=forecast.values,
                     name="Forecast",
                     line=dict(color="orange", dash="dash"),
-                    mode="lines+markers",
-                    text=[f"Step {i+1}: {v:.2f}" for i, v in enumerate(forecast.values)],
-                    hoverinfo="text"
+                    mode="lines+markers"
                 ))
-                fig.add_vline(x=len(df), line=dict(color="gray", dash="dot"),
-                              annotation_text="Forecast Start", annotation_position="top left")
                 st.plotly_chart(fig, use_container_width=True)
 
-                st.subheader("📅 Forecasted Values")
-                forecast_df = pd.DataFrame({"Step": list(range(1, forecast_horizon + 1)), "Forecast": forecast.values})
-                st.dataframe(forecast_df.style.format({"Forecast": "{:.2f}"}))
+                forecast_df = pd.DataFrame({
+                    "Date": pd.date_range(df.index[-1], periods=forecast_horizon + 1, freq="W")[1:],
+                    "Forecast": forecast.values
+                })
+                st.dataframe(forecast_df)
                 csv = forecast_df.to_csv(index=False).encode("utf-8")
                 st.download_button("📥 Download forecast as CSV", csv, "forecast.csv", "text/csv")
-
-                if len(df) >= forecast_horizon:
-                    true = df[target_column].iloc[-forecast_horizon:].values
-                    pred = forecast.reset_index(drop=True).iloc[:forecast_horizon].values
-                    rmse, mae, mape = evaluate_forecast(true, pred)
-
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("RMSE", f"{rmse:.2f}")
-                    c2.metric("MAE", f"{mae:.2f}")
-                    c3.metric("MAPE", f"{mape:.2f}%")
-
-                    if model_choice in ["ARIMA", "SARIMA"]:
-                        st.caption(f"Model parameters: {model_choice} with default seasonal and trend settings")
-                else:
-                    st.warning("Not enough historical data to evaluate forecast accuracy.")
 
         except Exception as e:
             st.error(f"Error processing file or forecast: {e}")
 
-    # --- Footer ---
-    st.markdown("---")
-    st.markdown("Made with ❤️ by Abhishek Jha", unsafe_allow_html=True)
+# --- Footer ---
+st.markdown("---")
+st.markdown("Made with ❤️ by Abhishek Jha", unsafe_allow_html=True)
