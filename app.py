@@ -11,7 +11,7 @@ from forecasting_models import (
 st.set_page_config(page_title="Forecasting Tool", layout="wide")
 
 # --- Tabs: Project Overview + Forecasting ---
-tab1, tab2 = st.tabs(["📘 Project Overview", "📈 Forecasting Tool"])
+tab2, tab1 = st.tabs(["📈 Forecasting Tool", "📘 Project Overview"])
 
 with tab1:
     st.title("📘 About the Project")
