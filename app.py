@@ -33,7 +33,7 @@ model_choice = st.selectbox("Choose forecasting model", ["Simple MA", "ARIMA", "
 
 if uploaded_file:
     try:
-        # Load data
+        # Load and clean data
         if uploaded_file.name.endswith(".csv"):
             df = pd.read_csv(uploaded_file)
         else:
@@ -46,6 +46,7 @@ if uploaded_file:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
         df = df.dropna(subset=["Date"]).set_index("Date")
         df = df.sort_index()
+        df.index = df.index.tz_localize(None) if df.index.tz is not None else df.index
 
         numeric_cols = df.select_dtypes(include="number").columns
         if len(numeric_cols) == 0:
@@ -68,12 +69,13 @@ if uploaded_file:
         model = model_map[model_choice](df, target_column, steps=forecast_horizon)
         forecast = model.forecast()
 
-        # Plot forecast (using default index)
+        # Plot forecast (index-based)
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=list(range(len(df))), y=df[target_column].values, name="Actual", line=dict(color="blue")))
         fig.add_trace(go.Scatter(x=list(range(len(df), len(df) + forecast_horizon)), y=forecast.values,
                                  name="Forecast", line=dict(color="orange", dash="dash"), mode="lines+markers"))
 
+        st.markdown("### 📊 Forecast Visualization")
         st.plotly_chart(fig, use_container_width=True)
 
         # Forecast table
@@ -85,11 +87,11 @@ if uploaded_file:
         csv = forecast_df.to_csv(index=False).encode("utf-8")
         st.download_button("Download forecast as CSV", csv, "forecast.csv", "text/csv")
 
-        # Evaluation
+        # Evaluation (safe for all models)
         if len(df) >= forecast_horizon:
-            true = df[target_column].iloc[-forecast_horizon:]
-            pred = forecast.iloc[:forecast_horizon]
-            rmse, mae, mape = evaluate_forecast(true.values, pred.values)
+            true = df[target_column].iloc[-forecast_horizon:].values
+            pred = forecast.reset_index(drop=True).iloc[:forecast_horizon].values
+            rmse, mae, mape = evaluate_forecast(true, pred)
             c1, c2, c3 = st.columns(3)
             c1.metric("RMSE", f"{rmse:.2f}")
             c2.metric("MAE", f"{mae:.2f}")
