@@ -10,14 +10,6 @@ from forecasting_models import (
 
 st.set_page_config(page_title="Forecasting Tool", layout="wide")
 
-# --- Helper: Generate future dates safely ---
-def generate_future_dates(index, horizon):
-    recent = index[-5:]
-    deltas = recent.to_series().diff().dropna()
-    avg_gap = deltas.mean()
-    future_dates = [index[-1] + (i + 1) * avg_gap for i in range(horizon)]
-    return future_dates, avg_gap
-
 # --- Tabs: Project Overview + Forecasting ---
 tab2, tab1 = st.tabs(["📈 Forecasting Tool", "📘 Project Overview"])
 
@@ -146,10 +138,6 @@ with tab2:
 
             target_column = st.selectbox("Select column to forecast", numeric_cols)
 
-            # --- Generate Future Dates ---
-            future_dates, avg_gap = generate_future_dates(df.index, forecast_horizon)
-            st.info(f"🕒 Average step size: {avg_gap}")
-
             model_map = {
                 "Simple MA": SimpleMA,
                 "ARIMA": ARIMAForecaster,
@@ -157,6 +145,12 @@ with tab2:
                 "ETS": ETSForecaster,
                 "XGBoost": XGBoostForecaster,
             }
+
+            # Detect average time step
+            if len(df.index) > 1:
+                avg_step = (df.index[1:] - df.index[:-1]).median()
+            else:
+                avg_step = pd.Timedelta("7D")  # fallback if only one row
 
             if compare_all:
                 st.markdown("### 📊 Model Comparison")
@@ -179,6 +173,10 @@ with tab2:
                     st.success(f"✅ Best model based on RMSE: {best_model}")
 
                     best_forecast = all_forecasts[best_model]
+
+                    # Generate accurate future dates
+                    future_dates = pd.date_range(start=df.index[-1] + avg_step, periods=forecast_horizon, freq=avg_step)
+
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=df.index, y=df[target_column], name="Actual", line=dict(color="blue")))
                     fig.add_trace(go.Scatter(
@@ -202,6 +200,10 @@ with tab2:
                 model = model_map[model_choice](df, target_column, steps=forecast_horizon)
                 forecast = model.forecast()
 
+                # Generate accurate future dates
+                future_dates = pd.date_range(start=df.index[-1] + avg_step, periods=forecast_horizon, freq=avg_step)
+
+                st.markdown("### 📊 Forecast Visualization")
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=df.index, y=df[target_column], name="Actual", line=dict(color="blue")))
                 fig.add_trace(go.Scatter(
