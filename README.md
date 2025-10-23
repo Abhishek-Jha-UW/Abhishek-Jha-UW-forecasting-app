@@ -1,41 +1,55 @@
-# 📈 Forecasting Tool
+# 📈 Time Series Forecasting App
 
-A modular, user-friendly time series forecasting app built with Streamlit. Supports multiple models and Excel/CSV uploads.
+This interactive Streamlit app empowers users to forecast time series data using five different models—ranging from simple averages to advanced machine learning. Designed for clarity, usability, and impact, the app helps users discover better forecasting methods beyond basic techniques like Simple Moving Average.
 
-## 🔧 Features
+---
 
-- Upload `.csv` or `.xlsx` files with a `Date` column and one numeric column
-- Choose from 5 forecasting models:
+## 🚀 Features
+
+- **Upload your own data** (CSV or Excel)
+- **Forecast using 5 models**:
   - Simple Moving Average
   - ARIMA
   - SARIMA
-  - ETS
+  - ETS (Exponential Smoothing)
   - XGBoost
-- Interactive Plotly charts
-- Evaluation metrics: RMSE, MAE, MAPE
-- Sample data download for quick testing
+- **Compare all models** with RMSE, MAE, MAPE
+- **Visualize forecasts** with interactive charts
+- **Download forecast results** as CSV
+- **Synthetic sample data** included to demonstrate model differences
+- **Best model recommendation** based on RMSE
+- **Clean UI** with tooltips, instructions, and expandable model descriptions
 
-## 📁 File Format
+---
 
-Your file should have:
-- Column A: `Date` (e.g., 2023-01-01)
-- Column B: Numeric values (e.g., sales, revenue)
+## 📊 Sample Data Format
 
-## 📊 Sample Data
+| Date       | Sales |
+|------------|-------|
+| 2022-01-01 | 100   |
+| 2022-01-08 | 115   |
+| ...        | ...   |
 
-Click the “Download sample data” button in the app to get a ready-to-use CSV.  
-It includes weekly sales data with a `Date` column and numeric values.
+- Column A: Date (weekly or monthly)
+- Column B: Numeric values (e.g., sales, demand)
 
-## 🚀 Deployment
+---
 
-This app is ready for Streamlit Cloud. Just upload the repo and go live.
+## 🧠 Why This App?
 
-## 📦 Requirements
+Many forecasting tools default to simple methods like moving averages. This app shows how more sophisticated models—like SARIMA or XGBoost—can outperform them, especially on complex, noisy, or seasonal data.
 
-See `requirements.txt` for all dependencies.
+---
 
-## 🧠 Next Steps
+## 🛠️ How to Run Locally
 
-- Add Prophet support once deployment is stable
-- Enable model tuning and export options
-- Add dashboard-style layout and user onboarding
+```bash
+# Clone the repo
+git clone https://github.com/your-username/forecasting-app.git
+cd forecasting-app
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Launch the app
+streamlit run app.py
