@@ -16,32 +16,42 @@ tab2, tab1 = st.tabs(["📈 Forecasting Tool", "📘 Project Overview"])
 with tab1:
     st.title("📘 About the Project")
     st.markdown("""
-    When I started as a cost engineer, I noticed most forecasting was done in Excel using Simple Moving Averages. From sales estimates to raw material tracking, it gave rough trends but wasn’t reliable for decisions.
+    When I started as a cost engineer, I noticed most forecasting was done in Excel using Simple Moving Averages. From sales estimates to raw material tracking, it gave rough trends, but wasn’t reliable enough for confident decisions.
 
     That’s what led me to build this app.
 
-    I’ve worked with real company data and seen how better forecasts can save costs—like timing steel purchases based on predicted price drops. But not everyone knows Python, and building ML models for every case isn’t practical.
+    I’ve worked with real company data and deployed forecasting models in actual business settings, helping teams time purchases, align with market trends, and reduce costs. One example: predicting steel price dips to optimize raw material procurement, which led to 3–5% savings.
 
-    So, I built a no-code tool where you can:
-    - Upload an Excel file  
-    - Run five models (MA, ARIMA, SARIMA, ETS, XGBoost)  
-    - Get the best-fit recommendation  
-    - View and download results instantly  
+    But not everyone knows Python, and building machine learning models for every forecasting need isn’t practical. So I created a no-code tool that anyone can use:
 
-    Even Power BI and Tableau can’t do this without scripts.
+    Upload an Excel file,  
+    Run five models (Simple MA, ARIMA, SARIMA, ETS, XGBoost),  
+    Get a best-fit recommendation based on error metrics,  
+    Visualize and download results instantly.  
 
-    **Why not one ML model?**  
-    Because ML works best later, once you have large, clean data. Most teams need quick, reliable forecasts for sales, inventory, or price trends without heavy setup.
+    Even tools like Power BI and Tableau can’t do this natively without Python or DAX scripts.
 
-    **Impact:**  
-    Using this approach, we saved 3–5% on raw material costs by timing purchases better.
+    **Why not just build one ML model?**  
+    Because ML works best later, once you have large, clean datasets and a specific use case. Most teams need quick, reliable forecasts across many time series without heavy setup or engineering overhead.
 
-    **Use cases:**  
-    - Sales and demand forecasting  
-    - Inventory and price prediction  
-    - Inflation or trend estimation  
+    This tool helps you start smarter, it compares models, recommends the best one, and gives you actionable forecasts—fast.
 
-    More models coming soon, including Prophet and ensembles. Would love your feedback!
+    **Use Cases (just a few examples):**  
+    Sales and demand forecasting,  
+    Inventory and price prediction,  
+    Inflation and macroeconomic trend estimation,  
+    Energy consumption tracking,  
+    Website traffic forecasting,  
+    Manufacturing throughput planning,  
+    Budget burn and financial projections,  
+    Any time series data across weeks, months, or quarters.  
+
+    **What’s next?**  
+    I’m actively expanding the model library—Prophet, bootstrapped ensembles, and more are on the way. The goal is to make advanced forecasting accessible to everyone, without needing to write a single line of code.
+
+    This app reflects what I’ve implemented in the companies I’ve worked with, and now I’m making it available to anyone who wants smarter, faster forecasting.
+
+    Would love your feedback, ideas, and use cases you’d like to see supported.
     """)
 
 with tab2:
