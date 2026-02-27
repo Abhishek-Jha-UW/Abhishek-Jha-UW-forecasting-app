@@ -257,4 +257,47 @@ fig.add_trace(go.Scatter(
     x=future_dates, y=best_forecast.values, name="Forecast", line=dict(dash="dash", width=3, color="orange")
 ))
 
-fig.add_vline(x=series.index[-1], line=dict
+fig.add_vline(x=series.index[-1], line=dict(dash="dot"))
+
+# Shaded forecast region
+fig.add_vrect(
+    x0=series.index[-1], x1=future_dates[-1],
+    fillcolor="lightgray", opacity=0.3, layer="below", line_width=0
+)
+
+fig.update_layout(
+    template="plotly_white",
+    xaxis_title="Date",
+    yaxis_title=target_column,
+    margin=dict(l=20, r=20, t=40, b=20)
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+# =====================================================
+# Download Forecast
+# =====================================================
+st.markdown("---")
+st.subheader("📥 Download Forecast")
+
+forecast_df = pd.DataFrame({
+    "Date": future_dates,
+    "Forecast": best_forecast.values
+})
+
+st.dataframe(forecast_df.head(), use_container_width=True)
+
+csv_forecast = forecast_df.to_csv(index=False).encode("utf-8")
+
+st.download_button(
+    label=f"Download {best_model_name} Forecast (CSV)",
+    data=csv_forecast,
+    file_name=f"{best_model_name}_forecast.csv",
+    mime="text/csv"
+)
+
+# =====================================================
+# Footer
+# =====================================================
+st.markdown("---")
+st.caption("Built by Abhishek Jha | MSBA | Multi-Model Time Series Forecasting Engine")
