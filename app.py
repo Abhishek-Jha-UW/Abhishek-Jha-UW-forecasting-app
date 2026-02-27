@@ -49,20 +49,26 @@ with st.sidebar:
     st.markdown("### 📂 Data Instructions")
     st.markdown("""
     Upload a file containing:
-    - A **Date** column
+    - A **Date** column (or any datetime-like column)
     - At least one **numeric column**
     """)
 
 # =====================================================
-# Sample Dataset
+# Better Sample Dataset (5 Years Weekly Data)
 # =====================================================
 
 np.random.seed(42)
-dates = pd.date_range(start="2022-01-01", periods=60, freq="W")
-trend = np.linspace(100, 300, 60)
-seasonality = 20 * np.sin(np.linspace(0, 12 * np.pi, 60))
-noise = np.random.normal(0, 15, 60)
-values = trend + seasonality + noise
+
+dates = pd.date_range(start="2019-01-01", periods=260, freq="W")
+
+trend = np.linspace(200, 500, 260)
+seasonality = 40 * np.sin(np.linspace(0, 20 * np.pi, 260))
+noise = np.random.normal(0, 25, 260)
+
+# occasional demand spikes
+spikes = np.random.choice([0, 120], size=260, p=[0.95, 0.05])
+
+values = trend + seasonality + noise + spikes
 
 sample_df = pd.DataFrame({
     "Date": dates,
@@ -75,11 +81,32 @@ sample_df = pd.DataFrame({
 
 st.subheader("📂 Data Source")
 
+# =====================================================
+# Download Template
+# =====================================================
+
+template_df = pd.DataFrame({
+    "Date": pd.date_range(start="2023-01-01", periods=10, freq="W"),
+    "Value": np.random.randint(100, 200, 10)
+})
+
+template_csv = template_df.to_csv(index=False).encode("utf-8")
+
+st.markdown("### 📥 Download Data Template")
+st.download_button(
+    "Download Forecasting Template (CSV)",
+    template_csv,
+    "forecast_template.csv",
+    "text/csv"
+)
+
+st.caption("Use this template format. Replace the sample values with your own data.")
+
 use_sample = st.checkbox("Use Built-in Sample Dataset (Demo Mode)", value=True)
 
 if use_sample:
     df = sample_df.copy()
-    st.info("Using synthetic weekly sales dataset with trend and seasonality.")
+    st.info("Using synthetic weekly sales dataset with trend, seasonality, and occasional spikes.")
 else:
     uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
     if uploaded_file is None:
@@ -98,12 +125,23 @@ else:
 # Data Preparation
 # =====================================================
 
-if "Date" not in df.columns:
-    st.error("Dataset must contain a 'Date' column.")
+# Auto detect first datetime column
+date_col = None
+for col in df.columns:
+    try:
+        parsed = pd.to_datetime(df[col])
+        if parsed.notna().sum() > len(df) * 0.7:
+            date_col = col
+            break
+    except:
+        continue
+
+if date_col is None:
+    st.error("No valid date column detected. Please use the template.")
     st.stop()
 
-df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-df = df.dropna(subset=["Date"]).set_index("Date").sort_index()
+df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+df = df.dropna(subset=[date_col]).set_index(date_col).sort_index()
 
 numeric_cols = df.select_dtypes(include="number").columns
 
