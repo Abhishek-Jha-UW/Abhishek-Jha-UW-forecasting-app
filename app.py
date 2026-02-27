@@ -34,166 +34,77 @@ with st.sidebar:
     forecast_horizon = st.slider(
         "Forecast Horizon (Periods)",
         min_value=3,
-        max_value=52,
+        max_value=24,   # reduced max for speed
         value=12
     )
 
-    compare_all = st.checkbox("Compare All Models (Recommended)", value=True)
+    compare_all = st.checkbox("Compare All Models (Slower)", value=False)
 
     model_choice = st.selectbox(
-        "Select Model (if not comparing)",
-        ["ARIMA", "SARIMA", "ETS", "XGBoost"]
+        "Select Model",
+        ["ETS (Fast)", "ARIMA", "SARIMA (Slow)", "XGBoost"]
     )
 
-    st.markdown("---")
-    st.markdown("### 📂 Data Requirements")
-    st.markdown("""
-    ✔ One Date column  
-    ✔ One or more numeric columns  
-    ✔ At least 20 rows recommended  
-    """)
+    fast_mode = st.checkbox("⚡ Fast Mode (Recommended)", value=True)
 
 # =====================================================
-# Built-In Sample Dataset (5 Years Weekly)
+# Sample Data
 # =====================================================
 
 np.random.seed(42)
-
 dates = pd.date_range(start="2019-01-01", periods=260, freq="W")
-
 trend = np.linspace(200, 500, 260)
 seasonality = 40 * np.sin(np.linspace(0, 20 * np.pi, 260))
 noise = np.random.normal(0, 25, 260)
-spikes = np.random.choice([0, 120], size=260, p=[0.95, 0.05])
-
-values = trend + seasonality + noise + spikes
+values = trend + seasonality + noise
 
 sample_df = pd.DataFrame({
     "Date": dates,
-    "Sales": values,
-    "Revenue": values * 8 + np.random.normal(0, 200, 260),
-    "Orders": values / 5 + np.random.normal(0, 5, 260)
+    "Sales": values
 })
 
-# =====================================================
-# Template Creation (Professional Version)
-# =====================================================
-
-template_df = pd.DataFrame({
-    "Date": pd.date_range(start="2020-01-01", periods=52, freq="W"),
-    "Sales": np.random.randint(100, 200, 52),
-    "Revenue": np.random.randint(1000, 5000, 52),
-    "Orders": np.random.randint(20, 80, 52)
-})
-
-csv_template = template_df.to_csv(index=False).encode("utf-8")
-
-excel_buffer = io.BytesIO()
-with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
-    template_df.to_excel(writer, index=False)
-excel_template = excel_buffer.getvalue()
-
-# =====================================================
-# Data Section
-# =====================================================
-
-st.subheader("📂 Data Source")
-
-st.markdown("### 📥 Download Forecasting Template")
-
-col1, col2 = st.columns(2)
-
-col1.download_button(
-    "Download Template (CSV)",
-    csv_template,
-    "forecast_template.csv",
-    "text/csv"
-)
-
-col2.download_button(
-    "Download Template (Excel)",
-    excel_template,
-    "forecast_template.xlsx",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
-
-st.caption("""
-Template Rules:
-• Keep ONE Date column  
-• You may add multiple numeric columns side-by-side  
-• Replace sample values with your own data  
-• Do not change the Date format  
-""")
-
-use_sample = st.checkbox("Use Built-in Demo Dataset", value=True)
+use_sample = st.checkbox("Use Demo Dataset", value=True)
 
 if use_sample:
     df = sample_df.copy()
-    st.info("Using synthetic weekly dataset with trend, seasonality, and demand spikes.")
 else:
-    uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
-
+    uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
     if uploaded_file is None:
         st.stop()
-
-    try:
-        if uploaded_file.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file)
-    except Exception as e:
-        st.error(f"Error reading file: {e}")
-        st.stop()
+    df = pd.read_csv(uploaded_file)
 
 # =====================================================
-# Data Preparation
+# Data Prep
 # =====================================================
 
-# Auto-detect date column
-date_col = None
-for col in df.columns:
-    try:
-        parsed = pd.to_datetime(df[col], errors="coerce")
-        if parsed.notna().sum() > len(df) * 0.7:
-            date_col = col
-            break
-    except:
-        continue
+df["Date"] = pd.to_datetime(df["Date"])
+df = df.set_index("Date").sort_index()
 
-if date_col is None:
-    st.error("No valid date column detected. Please use the provided template.")
-    st.stop()
+series = df.select_dtypes(include="number").iloc[:, 0]
 
-df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
-df = df.dropna(subset=[date_col]).set_index(date_col).sort_index()
-
-numeric_cols = df.select_dtypes(include="number").columns
-
-if len(numeric_cols) == 0:
-    st.error("No numeric columns found.")
-    st.stop()
-
-target_column = st.selectbox("Select Target Column to Forecast", numeric_cols)
-
-series = df[target_column].dropna()
-
-# Small dataset warning
 if len(series) < 20:
-    st.warning("Dataset is very small. Model accuracy may be unreliable.")
-
-st.markdown("### 🧾 Data Preview")
-st.dataframe(df.head(), use_container_width=True)
+    st.warning("Dataset too small for reliable forecasting.")
 
 # =====================================================
-# Model Mapping
+# MODEL CACHING (CRITICAL FIX)
 # =====================================================
 
-model_map = {
-    "ARIMA": ARIMAForecaster,
-    "SARIMA": SARIMAForecaster,
-    "ETS": ETSForecaster,
-    "XGBoost": XGBoostForecaster,
-}
+@st.cache_data(show_spinner=False)
+def run_model(model_name, series_values, horizon):
+    series_local = pd.Series(series_values)
+
+    model_map = {
+        "ETS (Fast)": ETSForecaster,
+        "ARIMA": ARIMAForecaster,
+        "SARIMA (Slow)": SARIMAForecaster,
+        "XGBoost": XGBoostForecaster,
+    }
+
+    model = model_map[model_name](series_local, steps=horizon)
+    metrics, forecast = model.fit_forecast()
+
+    return metrics, forecast
+
 
 # =====================================================
 # Forecasting
@@ -205,65 +116,62 @@ st.subheader("📊 Model Performance")
 results = []
 forecasts = {}
 
-with st.spinner("Running forecasting models..."):
+if compare_all:
+    progress = st.progress(0)
 
-    if compare_all:
-        for name, model_class in model_map.items():
-            model = model_class(series, steps=forecast_horizon)
-            metrics, forecast = model.fit_forecast()
+    model_list = ["ETS (Fast)", "ARIMA"]
 
-            results.append({
-                "Model": name,
-                "RMSE": metrics["RMSE"],
-                "MAE": metrics["MAE"],
-                "MAPE": metrics["MAPE"]
-            })
+    if not fast_mode:
+        model_list += ["SARIMA (Slow)", "XGBoost"]
 
-            forecasts[name] = forecast
+    for i, name in enumerate(model_list):
+        metrics, forecast = run_model(name, series.values, forecast_horizon)
 
-        comp_df = pd.DataFrame(results).sort_values("RMSE").reset_index(drop=True)
+        results.append({
+            "Model": name,
+            "RMSE": metrics["RMSE"],
+            "MAE": metrics["MAE"],
+            "MAPE": metrics["MAPE"]
+        })
 
-        best_model_name = comp_df.iloc[0]["Model"]
-        best_forecast = forecasts[best_model_name]
-        best_metrics = comp_df.iloc[0]
+        forecasts[name] = forecast
 
-        st.success(f"🏆 Best Performing Model: {best_model_name}")
+        progress.progress((i + 1) / len(model_list))
 
-        col1, col2, col3 = st.columns(3)
-        col1.metric("RMSE", f"{best_metrics['RMSE']:.2f}")
-        col2.metric("MAE", f"{best_metrics['MAE']:.2f}")
-        col3.metric("MAPE (%)", f"{best_metrics['MAPE']:.2f}")
+    comp_df = pd.DataFrame(results).sort_values("RMSE").reset_index(drop=True)
 
-        st.markdown("### 📊 Model Leaderboard")
-        st.dataframe(
-            comp_df.style.format({
-                "RMSE": "{:.2f}",
-                "MAE": "{:.2f}",
-                "MAPE": "{:.2f}"
-            }),
-            use_container_width=True
-        )
+    best_model_name = comp_df.iloc[0]["Model"]
+    best_forecast = forecasts[best_model_name]
+    best_metrics = comp_df.iloc[0]
 
-    else:
-        model = model_map[model_choice](series, steps=forecast_horizon)
-        metrics, best_forecast = model.fit_forecast()
-        best_model_name = model_choice
+    st.success(f"🏆 Best Model: {best_model_name}")
 
-        col1, col2, col3 = st.columns(3)
-        col1.metric("RMSE", f"{metrics['RMSE']:.2f}")
-        col2.metric("MAE", f"{metrics['MAE']:.2f}")
-        col3.metric("MAPE (%)", f"{metrics['MAPE']:.2f}")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("RMSE", f"{best_metrics['RMSE']:.2f}")
+    col2.metric("MAE", f"{best_metrics['MAE']:.2f}")
+    col3.metric("MAPE (%)", f"{best_metrics['MAPE']:.2f}")
+
+    st.dataframe(comp_df, use_container_width=True)
+
+else:
+    metrics, best_forecast = run_model(model_choice, series.values, forecast_horizon)
+    best_model_name = model_choice
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("RMSE", f"{metrics['RMSE']:.2f}")
+    col2.metric("MAE", f"{metrics['MAE']:.2f}")
+    col3.metric("MAPE (%)", f"{metrics['MAPE']:.2f}")
 
 # =====================================================
 # Visualization
 # =====================================================
 
 st.markdown("---")
-st.subheader("📈 Forecast Visualization")
+st.subheader("📈 Forecast")
 
 freq = pd.infer_freq(series.index)
 if freq is None:
-    freq = "D"
+    freq = "W"
 
 future_dates = pd.date_range(
     start=series.index[-1] + pd.tseries.frequencies.to_offset(freq),
@@ -276,62 +184,29 @@ fig = go.Figure()
 fig.add_trace(go.Scatter(
     x=series.index,
     y=series.values,
-    name="Historical",
-    line=dict(width=2)
+    name="Historical"
 ))
 
 fig.add_trace(go.Scatter(
     x=future_dates,
     y=best_forecast.values,
     name="Forecast",
-    line=dict(dash="dash", width=3)
+    line=dict(dash="dash")
 ))
-
-fig.add_vline(x=series.index[-1], line=dict(dash="dot"))
-
-fig.add_vrect(
-    x0=series.index[-1],
-    x1=future_dates[-1],
-    fillcolor="lightgray",
-    opacity=0.2,
-    layer="below",
-    line_width=0
-)
-
-fig.update_layout(
-    template="plotly_white",
-    xaxis_title="Date",
-    yaxis_title=target_column
-)
 
 st.plotly_chart(fig, use_container_width=True)
 
 # =====================================================
-# Download Forecast
+# Download
 # =====================================================
-
-st.markdown("---")
-st.subheader("📥 Download Forecast")
 
 forecast_df = pd.DataFrame({
     "Date": future_dates,
     "Forecast": best_forecast.values
 })
 
-st.dataframe(forecast_df, use_container_width=True)
-
-csv_forecast = forecast_df.to_csv(index=False).encode("utf-8")
-
 st.download_button(
-    label=f"Download {best_model_name} Forecast (CSV)",
-    data=csv_forecast,
-    file_name=f"{best_model_name}_forecast.csv",
-    mime="text/csv"
+    "Download Forecast CSV",
+    forecast_df.to_csv(index=False).encode("utf-8"),
+    f"{best_model_name}_forecast.csv"
 )
-
-# =====================================================
-# Footer
-# =====================================================
-
-st.markdown("---")
-st.caption("Built by Abhishek Jha | MSBA | Multi-Model Time Series Forecasting Engine")
