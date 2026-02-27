@@ -25,7 +25,7 @@ st.title("📈 Time Series Forecasting Studio")
 st.caption("Multi-Model Forecasting Engine with Automated Model Selection")
 
 # =====================================================
-# Sidebar Configuration
+# Sidebar
 # =====================================================
 
 with st.sidebar:
@@ -34,8 +34,8 @@ with st.sidebar:
     forecast_horizon = st.slider(
         "Forecast Horizon (Periods)",
         min_value=3,
-        max_value=36,
-        value=6
+        max_value=52,
+        value=12
     )
 
     compare_all = st.checkbox("Compare All Models (Recommended)", value=True)
@@ -46,15 +46,15 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    st.markdown("### 📂 Data Instructions")
+    st.markdown("### 📂 Data Requirements")
     st.markdown("""
-    Upload a file containing:
-    - A **Date** column (or any datetime-like column)
-    - At least one **numeric column**
+    ✔ One Date column  
+    ✔ One or more numeric columns  
+    ✔ At least 20 rows recommended  
     """)
 
 # =====================================================
-# Better Sample Dataset (5 Years Weekly Data)
+# Built-In Sample Dataset (5 Years Weekly)
 # =====================================================
 
 np.random.seed(42)
@@ -64,51 +64,75 @@ dates = pd.date_range(start="2019-01-01", periods=260, freq="W")
 trend = np.linspace(200, 500, 260)
 seasonality = 40 * np.sin(np.linspace(0, 20 * np.pi, 260))
 noise = np.random.normal(0, 25, 260)
-
-# occasional demand spikes
 spikes = np.random.choice([0, 120], size=260, p=[0.95, 0.05])
 
 values = trend + seasonality + noise + spikes
 
 sample_df = pd.DataFrame({
     "Date": dates,
-    "Sales": values
+    "Sales": values,
+    "Revenue": values * 8 + np.random.normal(0, 200, 260),
+    "Orders": values / 5 + np.random.normal(0, 5, 260)
 })
 
 # =====================================================
-# Data Selection
+# Template Creation (Professional Version)
+# =====================================================
+
+template_df = pd.DataFrame({
+    "Date": pd.date_range(start="2020-01-01", periods=52, freq="W"),
+    "Sales": np.random.randint(100, 200, 52),
+    "Revenue": np.random.randint(1000, 5000, 52),
+    "Orders": np.random.randint(20, 80, 52)
+})
+
+csv_template = template_df.to_csv(index=False).encode("utf-8")
+
+excel_buffer = io.BytesIO()
+with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+    template_df.to_excel(writer, index=False)
+excel_template = excel_buffer.getvalue()
+
+# =====================================================
+# Data Section
 # =====================================================
 
 st.subheader("📂 Data Source")
 
-# =====================================================
-# Download Template
-# =====================================================
+st.markdown("### 📥 Download Forecasting Template")
 
-template_df = pd.DataFrame({
-    "Date": pd.date_range(start="2023-01-01", periods=10, freq="W"),
-    "Value": np.random.randint(100, 200, 10)
-})
+col1, col2 = st.columns(2)
 
-template_csv = template_df.to_csv(index=False).encode("utf-8")
-
-st.markdown("### 📥 Download Data Template")
-st.download_button(
-    "Download Forecasting Template (CSV)",
-    template_csv,
+col1.download_button(
+    "Download Template (CSV)",
+    csv_template,
     "forecast_template.csv",
     "text/csv"
 )
 
-st.caption("Use this template format. Replace the sample values with your own data.")
+col2.download_button(
+    "Download Template (Excel)",
+    excel_template,
+    "forecast_template.xlsx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
 
-use_sample = st.checkbox("Use Built-in Sample Dataset (Demo Mode)", value=True)
+st.caption("""
+Template Rules:
+• Keep ONE Date column  
+• You may add multiple numeric columns side-by-side  
+• Replace sample values with your own data  
+• Do not change the Date format  
+""")
+
+use_sample = st.checkbox("Use Built-in Demo Dataset", value=True)
 
 if use_sample:
     df = sample_df.copy()
-    st.info("Using synthetic weekly sales dataset with trend, seasonality, and occasional spikes.")
+    st.info("Using synthetic weekly dataset with trend, seasonality, and demand spikes.")
 else:
     uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
+
     if uploaded_file is None:
         st.stop()
 
@@ -125,11 +149,11 @@ else:
 # Data Preparation
 # =====================================================
 
-# Auto detect first datetime column
+# Auto-detect date column
 date_col = None
 for col in df.columns:
     try:
-        parsed = pd.to_datetime(df[col])
+        parsed = pd.to_datetime(df[col], errors="coerce")
         if parsed.notna().sum() > len(df) * 0.7:
             date_col = col
             break
@@ -137,7 +161,7 @@ for col in df.columns:
         continue
 
 if date_col is None:
-    st.error("No valid date column detected. Please use the template.")
+    st.error("No valid date column detected. Please use the provided template.")
     st.stop()
 
 df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
@@ -146,12 +170,16 @@ df = df.dropna(subset=[date_col]).set_index(date_col).sort_index()
 numeric_cols = df.select_dtypes(include="number").columns
 
 if len(numeric_cols) == 0:
-    st.error("No numeric columns found for forecasting.")
+    st.error("No numeric columns found.")
     st.stop()
 
-target_column = st.selectbox("Select Target Column", numeric_cols)
+target_column = st.selectbox("Select Target Column to Forecast", numeric_cols)
 
 series = df[target_column].dropna()
+
+# Small dataset warning
+if len(series) < 20:
+    st.warning("Dataset is very small. Model accuracy may be unreliable.")
 
 st.markdown("### 🧾 Data Preview")
 st.dataframe(df.head(), use_container_width=True)
@@ -168,7 +196,7 @@ model_map = {
 }
 
 # =====================================================
-# Run Forecasting
+# Forecasting
 # =====================================================
 
 st.markdown("---")
@@ -196,10 +224,9 @@ with st.spinner("Running forecasting models..."):
         comp_df = pd.DataFrame(results).sort_values("RMSE").reset_index(drop=True)
 
         best_model_name = comp_df.iloc[0]["Model"]
-        best_metrics = comp_df.iloc[0]
         best_forecast = forecasts[best_model_name]
+        best_metrics = comp_df.iloc[0]
 
-        # --- Best Model Card ---
         st.success(f"🏆 Best Performing Model: {best_model_name}")
 
         col1, col2, col3 = st.columns(3)
@@ -228,7 +255,7 @@ with st.spinner("Running forecasting models..."):
         col3.metric("MAPE (%)", f"{metrics['MAPE']:.2f}")
 
 # =====================================================
-# Forecast Visualization
+# Visualization
 # =====================================================
 
 st.markdown("---")
@@ -239,14 +266,13 @@ if freq is None:
     freq = "D"
 
 future_dates = pd.date_range(
-    start=series.index[-1],
-    periods=forecast_horizon + 1,
+    start=series.index[-1] + pd.tseries.frequencies.to_offset(freq),
+    periods=forecast_horizon,
     freq=freq
-)[1:]
+)
 
 fig = go.Figure()
 
-# Historical
 fig.add_trace(go.Scatter(
     x=series.index,
     y=series.values,
@@ -254,7 +280,6 @@ fig.add_trace(go.Scatter(
     line=dict(width=2)
 ))
 
-# Forecast
 fig.add_trace(go.Scatter(
     x=future_dates,
     y=best_forecast.values,
@@ -262,10 +287,8 @@ fig.add_trace(go.Scatter(
     line=dict(dash="dash", width=3)
 ))
 
-# Vertical separation line
 fig.add_vline(x=series.index[-1], line=dict(dash="dot"))
 
-# Shaded forecast region
 fig.add_vrect(
     x0=series.index[-1],
     x1=future_dates[-1],
@@ -278,13 +301,10 @@ fig.add_vrect(
 fig.update_layout(
     template="plotly_white",
     xaxis_title="Date",
-    yaxis_title=target_column,
-    legend_title="Legend"
+    yaxis_title=target_column
 )
 
 st.plotly_chart(fig, use_container_width=True)
-
-st.caption("Forecast generated using out-of-sample backtesting and best-performing model.")
 
 # =====================================================
 # Download Forecast
@@ -300,11 +320,11 @@ forecast_df = pd.DataFrame({
 
 st.dataframe(forecast_df, use_container_width=True)
 
-csv = forecast_df.to_csv(index=False).encode("utf-8")
+csv_forecast = forecast_df.to_csv(index=False).encode("utf-8")
 
 st.download_button(
     label=f"Download {best_model_name} Forecast (CSV)",
-    data=csv,
+    data=csv_forecast,
     file_name=f"{best_model_name}_forecast.csv",
     mime="text/csv"
 )
