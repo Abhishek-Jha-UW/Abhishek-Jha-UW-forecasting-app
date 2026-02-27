@@ -4,263 +4,215 @@ import numpy as np
 import plotly.graph_objects as go
 import io
 from forecasting_models import (
-    SimpleMA, ARIMAForecaster, SARIMAForecaster,
-    ETSForecaster, XGBoostForecaster, evaluate_forecast
+    ARIMAForecaster,
+    SARIMAForecaster,
+    ETSForecaster,
+    XGBoostForecaster
 )
 
-st.set_page_config(page_title="Forecasting Tool", layout="wide")
+st.set_page_config(
+    page_title="Time Series Forecasting Studio",
+    layout="wide",
+    page_icon="📈"
+)
 
-# Helper to format a pandas Timedelta in friendly text
-def format_timedelta(td: pd.Timedelta) -> str:
-    if pd.isna(td):
-        return "n/a"
-    total_seconds = int(td.total_seconds())
-    days, rem = divmod(total_seconds, 86400)
-    hours, rem = divmod(rem, 3600)
-    minutes, seconds = divmod(rem, 60)
-    if days >= 1:
-        return f"{days} day{'s' if days != 1 else ''}"
-    if hours >= 1:
-        return f"{hours} hour{'s' if hours != 1 else ''}"
-    if minutes >= 1:
-        return f"{minutes} minute{'s' if minutes != 1 else ''}"
-    return f"{seconds} second{'s' if seconds != 1 else ''}"
+# =====================================================
+# Header
+# =====================================================
 
-# --- Tabs: Project Overview + Forecasting ---
-tab2, tab1 = st.tabs(["📈 Forecasting Tool", "📘 Project Overview"])
+st.title("📈 Time Series Forecasting Studio")
+st.caption("Multi-Model Forecasting Engine with Automated Model Selection")
 
-with tab1:
-    st.title("📘 About the Project")
-    st.markdown("""
-    When I started as an analyst, I noticed most forecasting was done in Excel using Simple Moving Averages. From sales estimates to raw material tracking, it gave rough trends, but wasn’t reliable enough for confident decisions.
+# =====================================================
+# Sidebar
+# =====================================================
 
-    That’s what led me to build this app.
+with st.sidebar:
+    st.header("⚙ Forecast Configuration")
 
-    I’ve worked with real company data and deployed forecasting models in actual business settings, helping teams time purchases, align with market trends, and reduce costs. One example: predicting steel price dips to optimize raw material procurement, which led to 3–5% savings.
+    forecast_horizon = st.slider("Forecast Horizon", 3, 36, 6)
 
-    But not everyone knows Python, and building machine learning models for every forecasting need isn’t practical. So I created a no-code tool that anyone can use:
+    model_choice = st.selectbox(
+        "Select Model",
+        ["ARIMA", "SARIMA", "ETS", "XGBoost"]
+    )
 
-    Upload an Excel file,  
-    Run five models (Simple MA, ARIMA, SARIMA, ETS, XGBoost),  
-    Get a best-fit recommendation based on error metrics,  
-    Visualize and download results instantly.  
+    compare_all = st.checkbox("Compare All Models", value=True)
 
-    Even tools like Power BI and Tableau can’t do this natively without Python or DAX scripts.
+    st.markdown("---")
+    st.markdown("Upload a CSV/XLSX file with:")
+    st.markdown("- A **Date** column")
+    st.markdown("- A **numeric value** column")
 
-    **Why not just build one ML model?**  
-    Because ML works best later, once you have large, clean datasets and a specific use case. Most teams need quick, reliable forecasts across many time series without heavy setup or engineering overhead.
+# =====================================================
+# File Upload
+# =====================================================
 
-    This tool helps you start smarter—it compares models, recommends the best one, and gives you actionable forecasts fast.
+uploaded_file = st.file_uploader("Upload Data File", type=["csv", "xlsx"])
 
-    **Use Cases:**  
-    Sales and demand forecasting,  
-    Inventory and price prediction,  
-    Inflation and macroeconomic trend estimation,  
-    Energy consumption tracking,  
-    Website traffic forecasting,  
-    Manufacturing throughput planning,  
-    Budget burn and financial projections,  
-    Any time series data across weeks, months, or quarters.  
+if uploaded_file:
 
-    **What’s next?**  
-    Prophet, bootstrapped ensembles, and more models are coming soon.
-    """)
+    try:
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file)
 
-with tab2:
-    st.title("📈 Time Series Forecasting Tool")
+        if "Date" not in df.columns:
+            st.error("File must contain a 'Date' column.")
+            st.stop()
 
-    # --- Sidebar Instructions ---
-    with st.sidebar:
-        st.header("📘 How to Use This App")
-        st.markdown("""
-        1. Upload a time series file with:
-           - A **Date** column in **A1**
-           - A **numeric value** column in **B**
-        2. Choose a forecasting model
-        3. Forecast the time series
-        4. View and download results
-        """)
-        with st.expander("📘 About This App"):
-            st.markdown("""
-            This app was built to move beyond Simple Moving Averages for forecasting.  
-            It helps find the best-fit model first—no coding required.
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+        df = df.dropna(subset=["Date"]).set_index("Date").sort_index()
 
-            Use it for:
-            - Sales volume forecasting  
-            - Inventory analysis  
-            - Inflation trend prediction  
-            - Any time series over weeks, months, or quarters
-            """)
+        numeric_cols = df.select_dtypes(include="number").columns
 
-    # --- Synthetic Sample Data ---
-    np.random.seed(42)
-    dates = pd.date_range(start="2022-01-01", periods=60, freq="W")
-    trend = np.linspace(100, 300, 60)
-    seasonality = 20 * np.sin(np.linspace(0, 12 * np.pi, 60))
-    noise = np.random.normal(0, 15, 60)
-    spikes = np.random.choice([0, 50], size=60, p=[0.9, 0.1])
-    values = trend + seasonality + noise + spikes
-    sample_df = pd.DataFrame({"Date": dates, "Sales": values})
-    sample_csv = sample_df.to_csv(index=False)
-    sample_bytes = io.BytesIO(sample_csv.encode("utf-8"))
-    st.download_button("📥 Download sample data (CSV)", sample_bytes, "sample_data.csv", "text/csv")
+        if len(numeric_cols) == 0:
+            st.error("No numeric column found.")
+            st.stop()
 
-    # --- File Upload ---
-    uploaded_file = st.file_uploader("📂 Upload your data file", type=["csv", "xlsx", "xls"])
+        target_column = st.selectbox("Select Target Column", numeric_cols)
 
-    if uploaded_file:
-        try:
-            if uploaded_file.name.endswith(".csv"):
-                df = pd.read_csv(uploaded_file)
-            elif uploaded_file.name.endswith(".xlsx"):
-                import openpyxl
-                df = pd.read_excel(uploaded_file, engine="openpyxl")
-            elif uploaded_file.name.endswith(".xls"):
-                import xlrd
-                df = pd.read_excel(uploaded_file, engine="xlrd")
-            else:
-                st.error("Unsupported file format. Please upload a .csv, .xlsx, or .xls file.")
-                st.stop()
+        series = df[target_column].dropna()
 
-            # --- Forecast Settings ---
-            st.markdown("### 🔧 Forecast Settings")
-            col1, col2 = st.columns(2)
-            with col1:
-                forecast_horizon = st.slider("Number of periods to forecast", 4, 24, 6)
-            with col2:
-                model_choice = st.selectbox(
-                    "Select a forecasting model",
-                    ["Simple MA", "ARIMA", "SARIMA", "ETS", "XGBoost"]
-                )
+        # =====================================================
+        # Model Mapping
+        # =====================================================
 
-            compare_all = st.checkbox("📊 Compare all models")
+        model_map = {
+            "ARIMA": ARIMAForecaster,
+            "SARIMA": SARIMAForecaster,
+            "ETS": ETSForecaster,
+            "XGBoost": XGBoostForecaster,
+        }
 
-            # --- Data Prep ---
-            if "Date" not in df.columns:
-                st.error("Missing 'Date' column. Please ensure your file has a 'Date' column.")
-                st.stop()
+        # =====================================================
+        # Run Models
+        # =====================================================
 
-            df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-            df = df.dropna(subset=["Date"]).set_index("Date").sort_index()
-            df.index = df.index.tz_localize(None) if df.index.tz is not None else df.index
+        if compare_all:
 
-            numeric_cols = df.select_dtypes(include="number").columns
-            if len(numeric_cols) == 0:
-                st.error("No numeric column found for forecasting.")
-                st.stop()
+            st.subheader("📊 Model Performance Comparison")
 
-            st.write("### 🧾 Preview of Uploaded Data")
-            st.dataframe(df.head())
+            results = []
+            forecasts = {}
 
-            target_column = st.selectbox("Select column to forecast", numeric_cols)
+            with st.spinner("Running forecasting models..."):
 
-            model_map = {
-                "Simple MA": SimpleMA,
-                "ARIMA": ARIMAForecaster,
-                "SARIMA": SARIMAForecaster,
-                "ETS": ETSForecaster,
-                "XGBoost": XGBoostForecaster,
-            }
+                for name, model_class in model_map.items():
 
-            # Detect average time step
-            if len(df.index) > 1:
-                # use median of diffs to be robust to outliers
-                avg_step = (df.index.to_series().diff().dropna()).median()
-            else:
-                avg_step = pd.Timedelta("7D")  # fallback if only one row
+                    model = model_class(series, steps=forecast_horizon)
+                    metrics, forecast = model.fit_forecast()
 
-            # human friendly
-            avg_step_text = format_timedelta(avg_step)
-
-            if compare_all:
-                # show helpful info while longer calculations run
-                st.info("⏳ This may take a few seconds while models are being compared...")
-
-                st.markdown("### 📊 Model Comparison")
-                results, all_forecasts = [], {}
-                for name, cls in model_map.items():
-                    model = cls(df, target_column, steps=forecast_horizon)
-                    forecast = model.forecast()
-                    all_forecasts[name] = forecast
-                    if len(df) >= forecast_horizon:
-                        true = df[target_column].iloc[-forecast_horizon:].values
-                        pred = forecast.reset_index(drop=True).iloc[:forecast_horizon].values
-                        rmse, mae, mape = evaluate_forecast(true, pred)
-                        results.append({"Model": name, "RMSE": rmse, "MAE": mae, "MAPE": mape})
-
-                if results:
-                    comp_df = pd.DataFrame(results).sort_values("RMSE")
-                    st.dataframe(comp_df.style.format({"RMSE": "{:.2f}", "MAE": "{:.2f}", "MAPE": "{:.2f}"}))
-                    best_model = comp_df.iloc[0]["Model"]
-                    st.success(f"✅ Best model based on RMSE: {best_model}")
-
-                    best_forecast = all_forecasts[best_model]
-
-                    # Generate accurate future dates using detected avg_step
-                    future_dates = pd.date_range(start=df.index[-1] + avg_step, periods=forecast_horizon, freq=avg_step)
-
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=df.index, y=df[target_column], name="Actual", line=dict(color="blue")))
-                    fig.add_trace(go.Scatter(
-                        x=future_dates,
-                        y=best_forecast.values,
-                        name="Forecast",
-                        line=dict(color="green", dash="dash"),
-                        mode="lines+markers"
-                    ))
-                    # add vertical line marking forecast start
-                    fig.add_vline(x=df.index[-1], line=dict(color="gray", dash="dot"))
-                    fig.update_layout(xaxis_title="Date", yaxis_title=target_column)
-                    st.plotly_chart(fig, use_container_width=True)
-
-                    # show average step size below the chart
-                    st.markdown(f"**Average step size:** {avg_step_text}")
-
-                    forecast_df = pd.DataFrame({
-                        "Date": future_dates,
-                        "Forecast": best_forecast.values
+                    results.append({
+                        "Model": name,
+                        "RMSE": metrics["RMSE"],
+                        "MAE": metrics["MAE"],
+                        "MAPE": metrics["MAPE"]
                     })
-                    st.dataframe(forecast_df)
-                    csv_best = forecast_df.to_csv(index=False).encode("utf-8")
-                    st.download_button(f"📥 Download {best_model} forecast", csv_best, f"{best_model}_forecast.csv", "text/csv")
-                else:
-                    st.warning("Not enough data to compare models or evaluate metrics.")
 
-            else:
-                model = model_map[model_choice](df, target_column, steps=forecast_horizon)
-                forecast = model.forecast()
+                    forecasts[name] = forecast
 
-                # Generate accurate future dates using detected avg_step
-                future_dates = pd.date_range(start=df.index[-1] + avg_step, periods=forecast_horizon, freq=avg_step)
+            comp_df = pd.DataFrame(results).sort_values("RMSE")
+            st.dataframe(
+                comp_df.style.format({
+                    "RMSE": "{:.2f}",
+                    "MAE": "{:.2f}",
+                    "MAPE": "{:.2f}"
+                }),
+                use_container_width=True
+            )
 
-                st.markdown("### 📊 Forecast Visualization")
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=df.index, y=df[target_column], name="Actual", line=dict(color="blue")))
-                fig.add_trace(go.Scatter(
-                    x=future_dates,
-                    y=forecast.values,
-                    name="Forecast",
-                    line=dict(color="orange", dash="dash"),
-                    mode="lines+markers"
-                ))
-                fig.add_vline(x=df.index[-1], line=dict(color="gray", dash="dot"))
-                fig.update_layout(xaxis_title="Date", yaxis_title=target_column)
-                st.plotly_chart(fig, use_container_width=True)
+            best_model = comp_df.iloc[0]["Model"]
+            st.success(f"🏆 Best Performing Model: {best_model}")
 
-                # show average step size below the chart
-                st.markdown(f"**Average step size:** {avg_step_text}")
+            best_forecast = forecasts[best_model]
 
-                forecast_df = pd.DataFrame({
-                    "Date": future_dates,
-                    "Forecast": forecast.values
-                })
-                st.dataframe(forecast_df)
-                csv = forecast_df.to_csv(index=False).encode("utf-8")
-                st.download_button("📥 Download forecast as CSV", csv, "forecast.csv", "text/csv")
+        else:
+            model = model_map[model_choice](series, steps=forecast_horizon)
+            metrics, best_forecast = model.fit_forecast()
+            best_model = model_choice
 
-        except Exception as e:
-            st.error(f"Error processing file or forecast: {e}")
+            st.subheader("📊 Model Performance")
 
-# --- Footer ---
+            col1, col2, col3 = st.columns(3)
+            col1.metric("RMSE", f"{metrics['RMSE']:.2f}")
+            col2.metric("MAE", f"{metrics['MAE']:.2f}")
+            col3.metric("MAPE (%)", f"{metrics['MAPE']:.2f}")
+
+        # =====================================================
+        # Generate Future Dates
+        # =====================================================
+
+        freq = pd.infer_freq(series.index)
+
+        if freq is None:
+            freq = "D"
+
+        future_dates = pd.date_range(
+            start=series.index[-1],
+            periods=forecast_horizon + 1,
+            freq=freq
+        )[1:]
+
+        # =====================================================
+        # Visualization
+        # =====================================================
+
+        st.subheader("📈 Forecast Visualization")
+
+        fig = go.Figure()
+
+        fig.add_trace(go.Scatter(
+            x=series.index,
+            y=series.values,
+            name="Historical",
+            line=dict(width=2)
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=future_dates,
+            y=best_forecast.values,
+            name="Forecast",
+            line=dict(dash="dash", width=3)
+        ))
+
+        fig.add_vline(x=series.index[-1], line=dict(dash="dot"))
+
+        fig.update_layout(
+            template="plotly_white",
+            xaxis_title="Date",
+            yaxis_title=target_column,
+            legend_title="Legend"
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # =====================================================
+        # Download Section
+        # =====================================================
+
+        forecast_df = pd.DataFrame({
+            "Date": future_dates,
+            "Forecast": best_forecast.values
+        })
+
+        st.subheader("📥 Download Forecast")
+
+        csv = forecast_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download Forecast CSV",
+            csv,
+            f"{best_model}_forecast.csv",
+            "text/csv"
+        )
+
+    except Exception as e:
+        st.error(f"Error processing file: {e}")
+
+# =====================================================
+# Footer
+# =====================================================
+
 st.markdown("---")
-st.markdown("Made with ❤️ by Abhishek Jha", unsafe_allow_html=True)
+st.caption("Built by Abhishek Jha | MSBA | Multi-Model Time Series Forecasting Engine")
