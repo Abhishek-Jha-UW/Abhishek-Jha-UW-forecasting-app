@@ -274,6 +274,7 @@ st.set_page_config(
 st.markdown(PAGE_STYLE, unsafe_allow_html=True)
 
 with st.sidebar:
+    st.caption("Build: v2 — baselines, walk-forward, insights + optional OpenAI")
     st.header("Configuration")
     forecast_horizon = st.slider("Forecast horizon (periods)", 3, 52, 12)
     compare_all = st.checkbox("Compare all models", value=True)

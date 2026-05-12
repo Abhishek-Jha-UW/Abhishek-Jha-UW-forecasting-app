@@ -50,7 +50,13 @@ Locally, use `.streamlit/secrets.toml` with the same keys (do not commit secrets
 
 ## Snapshot of original code
 
-A copy of the pre-refactor files is in the `intial_data/` folder (same spelling as requested).
+Pre-refactor copies live in `intial_data/` under **non-conflicting names** so they are never mistaken for the live app:
+
+- `intial_data/app_snapshot_original.py`
+- `intial_data/forecasting_models_snapshot_original.py`
+- plus `intial_data/requirements.txt` and `intial_data/README.md`
+
+Always run **`streamlit run app.py`** from the **repository root** (the folder that contains the main `app.py` next to `forecasting_models.py`).
 
 ---
 
