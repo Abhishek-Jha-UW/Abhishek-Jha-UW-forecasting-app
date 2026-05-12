@@ -311,8 +311,8 @@ st.markdown(
 )
 
 st.markdown(
-    '<div class="callout"><b>How to read this app:</b> start with the leaderboard, confirm baselines vs '
-    "complex models, inspect diagnostics, then review the chart and export the forecast CSV.</div>",
+    '<div class="callout"><b>How to read this app:</b> review the leaderboard, inspect the forecast chart for the best model, '
+    "then read suggestions / optional AI narrative and export the CSV.</div>",
     unsafe_allow_html=True,
 )
 
@@ -473,6 +473,69 @@ if compare_all:
         use_container_width=True,
     )
 
+st.divider()
+st.subheader("Forecast chart")
+
+vals = np.asarray(best_forecast, dtype=float).ravel()
+if len(vals) != len(future_dates):
+    future_dates = compute_future_dates(series.index, forecast_horizon)[0]
+    vals = np.asarray(best_forecast, dtype=float).ravel()[: len(future_dates)]
+    if len(vals) < len(future_dates):
+        vals = np.pad(vals, (0, len(future_dates) - len(vals)), mode="edge")
+
+fig = go.Figure()
+fig.add_trace(
+    go.Scatter(
+        x=series.index,
+        y=series.values,
+        name="History",
+        mode="lines",
+        line=dict(color="#1f77b4", width=2),
+    )
+)
+fig.add_trace(
+    go.Scatter(
+        x=future_dates,
+        y=vals,
+        name=f"Forecast ({best_model_name})",
+        mode="lines",
+        line=dict(color="#ff7f0e", width=3, dash="dash"),
+    )
+)
+
+if show_intervals:
+    rs = float(best_extras.get("residual_std", 0.0) or 0.0)
+    if rs > 0:
+        h = np.arange(1, len(future_dates) + 1, dtype=float)
+        band = 1.96 * rs * np.sqrt(h)
+        upper = vals + band
+        lower = vals - band
+        fig.add_trace(
+            go.Scatter(
+                x=list(future_dates) + list(future_dates)[::-1],
+                y=list(upper) + list(lower)[::-1],
+                fill="toself",
+                fillcolor="rgba(255, 127, 14, 0.12)",
+                line=dict(color="rgba(255,255,255,0)"),
+                name="Approx. interval",
+                hoverinfo="skip",
+            )
+        )
+
+fig.add_vline(x=series.index[-1], line=dict(dash="dot", color="#9aa0a6"))
+fig.update_layout(
+    template="plotly_white",
+    height=520,
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    margin=dict(l=10, r=10, t=40, b=10),
+    xaxis_title="Date",
+    yaxis_title=target_column,
+)
+st.plotly_chart(fig, use_container_width=True)
+st.caption(
+    "Intervals widen with horizon using a simple sqrt(h) scaling of residual dispersion; use for communication, not pricing risk."
+)
+
 results_fp = _results_fingerprint(comp_df, series, forecast_horizon)
 st.session_state["last_results_fp"] = results_fp
 
@@ -541,69 +604,6 @@ else:
                 "Click **Generate** again to refresh."
             )
         st.markdown(st.session_state["ai_report"])
-
-st.divider()
-st.subheader("Forecast chart")
-
-vals = np.asarray(best_forecast, dtype=float).ravel()
-if len(vals) != len(future_dates):
-    future_dates = compute_future_dates(series.index, forecast_horizon)[0]
-    vals = np.asarray(best_forecast, dtype=float).ravel()[: len(future_dates)]
-    if len(vals) < len(future_dates):
-        vals = np.pad(vals, (0, len(future_dates) - len(vals)), mode="edge")
-
-fig = go.Figure()
-fig.add_trace(
-    go.Scatter(
-        x=series.index,
-        y=series.values,
-        name="History",
-        mode="lines",
-        line=dict(color="#1f77b4", width=2),
-    )
-)
-fig.add_trace(
-    go.Scatter(
-        x=future_dates,
-        y=vals,
-        name=f"Forecast ({best_model_name})",
-        mode="lines",
-        line=dict(color="#ff7f0e", width=3, dash="dash"),
-    )
-)
-
-if show_intervals:
-    rs = float(best_extras.get("residual_std", 0.0) or 0.0)
-    if rs > 0:
-        h = np.arange(1, len(future_dates) + 1, dtype=float)
-        band = 1.96 * rs * np.sqrt(h)
-        upper = vals + band
-        lower = vals - band
-        fig.add_trace(
-            go.Scatter(
-                x=list(future_dates) + list(future_dates)[::-1],
-                y=list(upper) + list(lower)[::-1],
-                fill="toself",
-                fillcolor="rgba(255, 127, 14, 0.12)",
-                line=dict(color="rgba(255,255,255,0)"),
-                name="Approx. interval",
-                hoverinfo="skip",
-            )
-        )
-
-fig.add_vline(x=series.index[-1], line=dict(dash="dot", color="#9aa0a6"))
-fig.update_layout(
-    template="plotly_white",
-    height=520,
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-    margin=dict(l=10, r=10, t=40, b=10),
-    xaxis_title="Date",
-    yaxis_title=target_column,
-)
-st.plotly_chart(fig, use_container_width=True)
-st.caption(
-    "Intervals widen with horizon using a simple sqrt(h) scaling of residual dispersion; use for communication, not pricing risk."
-)
 
 st.divider()
 st.subheader("Export")
