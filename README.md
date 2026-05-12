@@ -1,55 +1,61 @@
-# 📈 Time Series Forecasting App
+# Time Series Forecasting Studio
 
-This interactive Streamlit app empowers users to forecast time series data using five different models—ranging from simple averages to advanced machine learning. Designed for clarity, usability, and impact, the app helps users discover better forecasting methods beyond basic techniques like Simple Moving Average.
-
----
-
-## 🚀 Features
-
-- **Upload your own data** (CSV or Excel)
-- **Forecast using 5 models**:
-  - Simple Moving Average
-  - ARIMA
-  - SARIMA
-  - ETS (Exponential Smoothing)
-  - XGBoost
-- **Compare all models** with RMSE, MAE, MAPE
-- **Visualize forecasts** with interactive charts
-- **Download forecast results** as CSV
-- **Synthetic sample data** included to demonstrate model differences
-- **Best model recommendation** based on RMSE
-- **Clean UI** with tooltips, instructions, and expandable model descriptions
+Streamlit app for **portfolio-grade** time series work: baselines, classical models (ARIMA / SARIMA / ETS), gradient boosting (XGBoost), **frequency-aware seasonality**, optional **walk-forward** back-testing, lightweight **diagnostics**, approximate **forecast intervals**, CSV export, and an optional **OpenAI** narrative that only receives **aggregated metrics** (no raw series rows by default).
 
 ---
 
-## 📊 Sample Data Format
+## Features
+
+- **Data**: CSV / Excel upload or built-in weekly demo data; templates for download.
+- **Models**: Naive, Seasonal naive, Moving average, ARIMA, SARIMA, ETS, XGBoost (lag features + recursive horizon).
+- **Validation**: Single chronological hold-out, or **walk-forward** averaging over three windows when the series is long enough.
+- **Metrics**: RMSE, MAE, MAPE on back-test predictions; leaderboard with automatic “best by RMSE”.
+- **Charts**: Plotly history + forecast; optional illustrative interval fan (residual-based).
+- **Diagnostics**: Missing counts, duplicate timestamps, simple ACF bar chart.
+- **AI (optional)**: One API call per click; uses `OPENAI_API_KEY` (and optional `OPENAI_MODEL`) from **Streamlit secrets**.
+
+---
+
+## Sample data format
 
 | Date       | Sales |
 |------------|-------|
 | 2022-01-01 | 100   |
 | 2022-01-08 | 115   |
-| ...        | ...   |
 
-- Column A: Date (weekly or monthly)
-- Column B: Numeric values (e.g., sales, demand)
+One date column plus numeric columns. Sorting is applied in the app.
 
 ---
 
-## 🧠 Why This App?
-
-Many forecasting tools default to simple methods like moving averages. This app shows how more sophisticated models—like SARIMA or XGBoost—can outperform them, especially on complex, noisy, or seasonal data.
-
----
-
-## 🛠️ How to Run Locally
+## Run locally
 
 ```bash
-# Clone the repo
-git clone https://github.com/your-username/forecasting-app.git
-cd forecasting-app
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Launch the app
 streamlit run app.py
+```
+
+### Streamlit secrets (OpenAI)
+
+In Streamlit Community Cloud, add in **App secrets**:
+
+```toml
+OPENAI_API_KEY = "sk-..."
+# optional — defaults to gpt-4o-mini
+OPENAI_MODEL = "gpt-4o-mini"
+```
+
+Locally, use `.streamlit/secrets.toml` with the same keys (do not commit secrets).
+
+---
+
+## Snapshot of original code
+
+A copy of the pre-refactor files is in the `intial_data/` folder (same spelling as requested).
+
+---
+
+## Limitations (explicit)
+
+- Intervals are **illustrative**, not calibrated prediction intervals.
+- Fixed ARIMA/SARIMA orders are a pragmatic default; production systems would tune orders or use automated selection.
+- Walk-forward requires sufficient history; short series fall back to a single hold-out split.
