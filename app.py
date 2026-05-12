@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+import streamlit as st
+
+st.set_page_config(
+    page_title="Forecasting Studio",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
 import hashlib
 import io
 import json
@@ -8,7 +17,6 @@ import textwrap
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-import streamlit as st
 
 from forecasting_models import get_model_registry, infer_seasonal_period
 
@@ -265,12 +273,6 @@ def generate_ai_insight_report(
         return None
 
 
-st.set_page_config(
-    page_title="Forecasting Studio",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
 st.markdown(PAGE_STYLE, unsafe_allow_html=True)
 
 with st.sidebar:
@@ -401,6 +403,10 @@ meta_cols[0].metric("Observations", f"{len(series):,}")
 meta_cols[1].metric("Inferred frequency", inferred_freq or "median spacing")
 meta_cols[2].metric("Season length (m)", f"{seasonal_period}")
 meta_cols[3].metric("Validation", "Walk-forward" if walk_forward_folds > 1 else "Hold-out")
+st.caption(
+    "Season length (m) is inferred for the UI. **SARIMA** and **ETS** automatically use a smaller effective season "
+    "when needed so the app stays responsive on Streamlit Cloud."
+)
 
 with st.expander("Diagnostics", expanded=False):
     d1, d2 = st.columns(2)
@@ -429,15 +435,20 @@ with st.expander("Diagnostics", expanded=False):
 st.divider()
 st.subheader("Model results")
 
-with st.spinner("Fitting models…"):
-    comp_df, best_forecast, best_model_name, best_metrics, best_extras, failures = run_forecasting(
-        series,
-        forecast_horizon,
-        compare_all,
-        model_choice,
-        seasonal_period,
-        walk_forward_folds,
-    )
+try:
+    with st.spinner("Fitting models…"):
+        comp_df, best_forecast, best_model_name, best_metrics, best_extras, failures = run_forecasting(
+            series,
+            forecast_horizon,
+            compare_all,
+            model_choice,
+            seasonal_period,
+            walk_forward_folds,
+        )
+except Exception as e:
+    st.error("Model fitting crashed. See details below—common causes on Streamlit Cloud are heavy SARIMAX season length or memory limits.")
+    st.exception(e)
+    st.stop()
 
 if failures:
     with st.expander("Model fit notes", expanded=False):

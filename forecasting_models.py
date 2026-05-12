@@ -107,6 +107,15 @@ class BaseForecaster(ABC):
         self.seasonal_period = int(max(2, seasonal_period))
         self.walk_forward_folds = int(max(1, walk_forward_folds))
 
+    def practical_seasonal_length(self, train_len: int) -> int:
+        """
+        Cap seasonal period for state-space / ETS so fits stay fast enough for Streamlit Cloud
+        (very large m, e.g. 52 on weekly data, makes SARIMAX prohibitively slow).
+        """
+        if train_len < 10:
+            return max(2, min(4, train_len - 1))
+        return int(min(self.seasonal_period, 24, max(4, train_len // 3)))
+
     @abstractmethod
     def fit_forecast(self):
         """Return (metrics dict, future forecast Series length steps, extras dict)."""
@@ -238,7 +247,7 @@ class MovingAverageForecaster(BaseForecaster):
 class ARIMAForecaster(BaseForecaster):
     def _split_eval(self, train, test):
         model = ARIMA(train, order=(1, 1, 1))
-        fit = model.fit()
+        fit = model.fit(maxiter=100)
         pred = fit.forecast(len(test))
         pred = pd.Series(np.asarray(pred), index=test.index)
         return evaluate_forecast(test, pred), pred
@@ -257,14 +266,14 @@ class ARIMAForecaster(BaseForecaster):
             rs = _residual_std(test, pred)
             mode = "single_holdout"
 
-        fit = ARIMA(self.series, order=(1, 1, 1)).fit()
+        fit = ARIMA(self.series, order=(1, 1, 1)).fit(maxiter=100)
         fc = pd.Series(np.asarray(fit.forecast(self.steps)))
         return metrics, fc, {"residual_std": rs, "validation": mode}
 
 
 class SARIMAForecaster(BaseForecaster):
     def _seasonal_order(self, train_len: int):
-        m = self.seasonal_period
+        m = self.practical_seasonal_length(train_len)
         if train_len < 2 * m + 8:
             return (0, 0, 0, 0)
         return (1, 1, 1, m)
@@ -278,7 +287,7 @@ class SARIMAForecaster(BaseForecaster):
             enforce_stationarity=False,
             enforce_invertibility=False,
         )
-        fit = model.fit(disp=False)
+        fit = model.fit(disp=False, maxiter=100)
         pred = fit.forecast(len(test))
         pred = pd.Series(np.asarray(pred), index=test.index)
         return evaluate_forecast(test, pred), pred
@@ -304,7 +313,7 @@ class SARIMAForecaster(BaseForecaster):
             seasonal_order=seasonal_order,
             enforce_stationarity=False,
             enforce_invertibility=False,
-        ).fit(disp=False)
+        ).fit(disp=False, maxiter=100)
         fc = pd.Series(np.asarray(fit.forecast(self.steps)))
         return metrics, fc, {"residual_std": rs, "validation": mode}
 
@@ -321,7 +330,7 @@ class ETSForecaster(BaseForecaster):
         ).fit()
 
     def _effective_m(self, train_len: int):
-        m = self.seasonal_period
+        m = self.practical_seasonal_length(train_len)
         if train_len < 2 * m + 4:
             return None
         return m
@@ -377,7 +386,7 @@ class XGBoostForecaster(BaseForecaster):
         X_tes = scaler.transform(X_te)
 
         model = XGBRegressor(
-            n_estimators=200,
+            n_estimators=120,
             learning_rate=0.05,
             max_depth=3,
             random_state=42,
@@ -425,7 +434,7 @@ class XGBoostForecaster(BaseForecaster):
         scaler = StandardScaler()
         Xs = scaler.fit_transform(X)
         model = XGBRegressor(
-            n_estimators=200,
+            n_estimators=120,
             learning_rate=0.05,
             max_depth=3,
             random_state=42,

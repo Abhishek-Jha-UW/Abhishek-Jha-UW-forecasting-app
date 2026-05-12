@@ -65,3 +65,4 @@ Always run **`streamlit run app.py`** from the **repository root** (the folder t
 - Intervals are **illustrative**, not calibrated prediction intervals.
 - Fixed ARIMA/SARIMA orders are a pragmatic default; production systems would tune orders or use automated selection.
 - Walk-forward requires sufficient history; short series fall back to a single hold-out split.
+- **SARIMA / ETS** use a **capped effective seasonal period** (and limited optimizer iterations) so the app remains responsive on Streamlit Community Cloud; the “Season length (m)” metric reflects inference, while heavy models may use a smaller `m` internally.
