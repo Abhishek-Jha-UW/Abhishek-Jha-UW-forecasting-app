@@ -7,12 +7,12 @@ Streamlit app for **portfolio-grade** time series work: baselines, classical mod
 ## Features
 
 - **Data**: CSV / Excel upload or built-in weekly demo data; templates for download.
-- **Models**: Naive, Seasonal naive, Moving average, ARIMA, SARIMA, ETS, XGBoost (lag features + recursive horizon).
+- **Models**: Naive, Seasonal naive, **Drift** (linear trend from first to last point), moving average, ARIMA, SARIMA, ETS, XGBoost (lag features + recursive horizon).
 - **Validation**: Single chronological hold-out, or **walk-forward** averaging over three windows when the series is long enough.
 - **Metrics**: RMSE, MAE, MAPE on back-test predictions; leaderboard with automatic “best by RMSE”.
 - **Charts**: Plotly history + forecast; optional illustrative interval fan (residual-based).
 - **Diagnostics**: Missing counts, duplicate timestamps, simple ACF bar chart.
-- **AI (optional)**: One API call per click; uses `OPENAI_API_KEY` (and optional `OPENAI_MODEL`) from **Streamlit secrets**.
+- **Suggestions**: Rule-based analyst bullets (always on, no API); optional **OpenAI** Markdown report (one call per click) using metrics + those bullets—`OPENAI_API_KEY` / `OPENAI_MODEL` in **Streamlit secrets**.
 
 ---
 

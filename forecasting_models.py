@@ -170,6 +170,41 @@ class SeasonalNaiveForecaster(BaseForecaster):
         return metrics, self._future(), {"residual_std": rs, "validation": mode}
 
 
+class DriftForecaster(BaseForecaster):
+    """Linear extrapolation from first to last observation (M3-style drift)."""
+
+    @staticmethod
+    def _slope(y: pd.Series) -> float:
+        y = pd.Series(y, dtype=float)
+        if len(y) < 2:
+            return 0.0
+        return float((y.iloc[-1] - y.iloc[0]) / max(len(y) - 1, 1))
+
+    def _split_eval(self, train, test):
+        slope = self._slope(train)
+        last = float(train.iloc[-1])
+        preds = [last + (i + 1) * slope for i in range(len(test))]
+        pred = pd.Series(preds, index=test.index)
+        return evaluate_forecast(test, pred), pred
+
+    def _future(self):
+        slope = self._slope(self.series)
+        last = float(self.series.iloc[-1])
+        preds = [last + (h + 1) * slope for h in range(self.steps)]
+        return pd.Series(preds)
+
+    def fit_forecast(self):
+        wf = self.walk_forward_folds
+        if wf > 1 and len(self.series) >= 48:
+            metrics, rs, mode = walk_forward_eval(self.series, self._split_eval, n_splits=wf)
+        else:
+            train, test = train_test_split_ts(self.series)
+            metrics, pred = self._split_eval(train, test)
+            rs = _residual_std(test, pred)
+            mode = "single_holdout"
+        return metrics, self._future(), {"residual_std": rs, "validation": mode}
+
+
 class MovingAverageForecaster(BaseForecaster):
     """Flat forecast equal to the mean of the last `window` observations."""
 
@@ -405,6 +440,7 @@ def get_model_registry():
     return {
         "Naive": NaiveForecaster,
         "Seasonal Naive": SeasonalNaiveForecaster,
+        "Drift": DriftForecaster,
         "Moving Average": MovingAverageForecaster,
         "ARIMA": ARIMAForecaster,
         "SARIMA": SARIMAForecaster,

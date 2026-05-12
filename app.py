@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import textwrap
@@ -125,6 +126,68 @@ def run_forecasting(
     return comp_df, best_forecast, best_name, best_metrics, best_extras, failures
 
 
+def _results_fingerprint(comp_df: pd.DataFrame, series: pd.Series, horizon: int) -> str:
+    tail = float(series.iloc[-1]) if len(series) else 0.0
+    blob = (
+        f"{len(series)}|{series.index[-1]!s}|{horizon}|{tail:.6g}|"
+        + comp_df.sort_values("Model").to_csv(index=False)
+    )
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:32]
+
+
+def build_rule_based_suggestions(
+    series: pd.Series,
+    comp_df: pd.DataFrame,
+    best_model_name: str,
+    seasonal_period: int,
+    inferred_freq: str | None,
+    walk_forward_folds: int,
+    horizon: int,
+    dupes: int,
+) -> list[str]:
+    out: list[str] = []
+    n = len(series)
+    if n < 30:
+        out.append("History is short: back-test metrics are noisy—prioritize longer series before trusting model rankings.")
+    if dupes > 0:
+        out.append(f"Found {dupes} duplicate timestamp(s); aggregate or fix timestamps so each period appears once.")
+    if inferred_freq is None:
+        out.append("Frequency could not be inferred cleanly; season length (m) is heuristic—validate against your business calendar.")
+
+    baselines = {"Naive", "Seasonal Naive", "Drift", "Moving Average"}
+    if best_model_name in baselines:
+        out.append(
+            f"The leaderboard favors **{best_model_name}**, a simple baseline—often a sign the signal is weak, "
+            "the horizon is hard, or stronger models need more data / tuning."
+        )
+
+    if len(comp_df) >= 2:
+        r0 = float(comp_df.iloc[0]["RMSE"])
+        r1 = float(comp_df.iloc[1]["RMSE"])
+        if r0 > 0 and (r1 - r0) / r0 < 0.05:
+            out.append("Top models are within ~5% RMSE of each other—treat the winner as a tie unless domain knowledge breaks it.")
+
+    worst_mape = float(comp_df["MAPE"].max())
+    if worst_mape > 80:
+        out.append("MAPE is very high for some models (often when values are near zero); lean on RMSE/MAE for comparisons.")
+
+    if walk_forward_folds > 1:
+        out.append("Walk-forward validation is on: metrics average multiple cut points and are usually more stable than a single split.")
+    else:
+        out.append("Hold-out validation uses one chronological split; enable walk-forward when you have enough history.")
+
+    if horizon > 24:
+        out.append("Long horizons amplify error; wide intervals and baseline wins are more common—consider shorter planning windows.")
+
+    if seasonal_period >= 24 and (inferred_freq is None or str(inferred_freq).upper().startswith("W")):
+        out.append("Weekly data with large seasonal m (e.g., 52) needs long history for seasonal models to fit reliably.")
+
+    if not out:
+        out.append("No major data red flags from simple checks; use diagnostics (ACF) and the leaderboard together.")
+
+    return out
+
+
 def _secrets_openai_key() -> str | None:
     try:
         v = st.secrets.get("OPENAI_API_KEY")
@@ -150,6 +213,7 @@ def generate_ai_insight_report(
     validation_mode: str,
     n_points: int,
     target: str,
+    analyst_bullets: list[str],
 ) -> str | None:
     key = _secrets_openai_key()
     if not key:
@@ -172,13 +236,16 @@ def generate_ai_insight_report(
             "validation_mode": validation_mode,
             "series_length": n_points,
             "target_column": target,
+            "app_rule_based_suggestions": analyst_bullets[:12],
         }
 
         system = textwrap.dedent(
             """You are a senior forecasting analyst. You only interpret the JSON metrics provided.
         Do not invent numbers. If the data or metrics are insufficient for a claim, say so briefly.
+        The field app_rule_based_suggestions contains on-device checks from the app—treat them as hypotheses to refine,
+        not facts to contradict without evidence from the JSON.
         Output Markdown with these sections exactly: ## Data quality & risks, ## Model comparison, ## Recommendation, ## Next steps.
-        Keep the full response under 700 words. Be direct and professional."""
+        Keep the full response under 650 words. Be direct and professional."""
         )
         user = "Here is JSON from a forecasting app (no raw time series is included):\n" + json.dumps(
             payload, indent=2
@@ -318,6 +385,7 @@ if len(numeric_cols) == 0:
 
 target_column = st.selectbox("Target column", list(numeric_cols))
 series = df[target_column].dropna().astype(float)
+n_dupes = int(series.index.duplicated().sum())
 if len(series) < 20:
     st.warning("Short series: metrics can be noisy; interpret with caution.")
 
@@ -337,8 +405,7 @@ with st.expander("Diagnostics", expanded=False):
     d1, d2 = st.columns(2)
     missing = int(series.isna().sum())
     d1.write(f"**Missing values (target):** {missing}")
-    dupes = int(series.index.duplicated().sum())
-    d2.write(f"**Duplicate timestamps:** {dupes}")
+    d2.write(f"**Duplicate timestamps:** {n_dupes}")
     if len(series) >= 8:
         lags, acf_vals = simple_acf(series, max_lag=min(36, len(series) - 2))
         if lags:
@@ -394,15 +461,49 @@ if compare_all:
         use_container_width=True,
     )
 
+results_fp = _results_fingerprint(comp_df, series, forecast_horizon)
+st.session_state["last_results_fp"] = results_fp
+
+analyst_bullets = build_rule_based_suggestions(
+    series,
+    comp_df,
+    best_model_name,
+    seasonal_period,
+    inferred_freq,
+    walk_forward_folds,
+    forecast_horizon,
+    n_dupes,
+)
+
 st.divider()
-st.subheader("AI insight report (optional)")
+st.subheader("Insights & suggestions")
+
+st.markdown("##### Analyst suggestions (on-device)")
+st.caption("Instant, no API cost—derived from length, duplicates, frequency, leaderboard, and horizon.")
+for bullet in analyst_bullets:
+    st.markdown(f"- {bullet}")
+
+st.markdown("---")
+st.markdown("##### AI narrative (OpenAI, optional)")
 if not _secrets_openai_key():
     st.caption(
-        "Add `OPENAI_API_KEY` to Streamlit secrets to enable one-click narrative insights. "
-        "Optionally set `OPENAI_MODEL` (defaults to `gpt-4o-mini`). Only aggregated metrics are sent—no raw rows."
+        "Add `OPENAI_API_KEY` to Streamlit secrets to enable a one-click Markdown report. "
+        "Optional: `OPENAI_MODEL` (defaults to `gpt-4o-mini`). Payload is JSON metrics + the bullets above—no raw rows."
     )
 else:
-    if st.button("Generate AI insight report", type="primary"):
+    st.success(
+        "OpenAI is configured. Each click sends one compact request (metrics + suggestion bullets only).",
+    )
+    c_ai1, c_ai2 = st.columns([1, 1])
+    with c_ai1:
+        gen = st.button("Generate AI insight report", type="primary", key="btn_ai_report")
+    with c_ai2:
+        if st.button("Clear AI report", key="btn_ai_clear"):
+            st.session_state.pop("ai_report", None)
+            st.session_state.pop("ai_report_fp", None)
+            st.rerun()
+
+    if gen:
         with st.spinner("Calling OpenAI (single request)…"):
             report = generate_ai_insight_report(
                 comp_df,
@@ -413,13 +514,20 @@ else:
                 str(best_extras.get("validation", "")),
                 len(series),
                 target_column,
+                analyst_bullets,
             )
         if report:
             st.session_state["ai_report"] = report
+            st.session_state["ai_report_fp"] = results_fp
         else:
-            st.warning("Could not generate a report (missing `openai` package or API error).")
+            st.warning("Could not generate a report (check `openai` install, billing, or network).")
 
     if st.session_state.get("ai_report"):
+        if st.session_state.get("ai_report_fp") != results_fp:
+            st.warning(
+                "This AI report may be **out of date** (data or settings changed since it was generated). "
+                "Click **Generate** again to refresh."
+            )
         st.markdown(st.session_state["ai_report"])
 
 st.divider()
